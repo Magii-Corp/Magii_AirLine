@@ -1,0 +1,715 @@
+openapi: 3.0.3
+info:
+  title: Magii AirLine API
+  description: 店舗待ち行列管理システムのAPI仕様
+  version: 1.0.0
+
+servers:
+  - url: https://your-project.supabase.co/functions/v1
+    description: Supabase Edge Functions
+
+tags:
+  - name: Guest
+    description: ゲスト（来店客）向けAPI
+  - name: Admin
+    description: 管理者（店舗スタッフ）向けAPI
+
+paths:
+  # ============================================================
+  # Guest Endpoints
+  # ============================================================
+  /auth/registerUser:
+    post:
+      tags: [Guest]
+      summary: ユーザー登録
+      description: デバイスIDで新規ゲストを登録、または既存ゲストを更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterUserRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterUserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /reservation:
+    get:
+      tags: [Guest]
+      summary: 予約状況取得
+      description: ゲストの現在の予約状況を取得
+      parameters:
+        - name: shop_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReservationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Guest]
+      summary: 予約作成
+      description: 新しい待ち行列チケットを発行
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateReservationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: 既に待ち行列に並んでいる
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /reservation/{id}/cancel:
+    patch:
+      tags: [Guest]
+      summary: 予約キャンセル
+      description: 待ち行列から離脱
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /reservation/{id}/arrive:
+    patch:
+      tags: [Guest]
+      summary: 到着報告
+      description: 呼び出し後に到着を報告
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /waiting:
+    get:
+      tags: [Guest]
+      summary: 待機状況取得
+      description: リアルタイム購読用の待機状況取得
+      parameters:
+        - name: shop_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetWaitingResponse'
+
+  # ============================================================
+  # Admin Endpoints
+  # ============================================================
+  /auth/registerShop:
+    post:
+      tags: [Admin]
+      summary: 店舗登録
+      description: 新規店舗とオーナーアカウントを作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterShopRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterShopResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/login:
+    post:
+      tags: [Admin]
+      summary: ログイン
+      description: 管理者認証
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: 認証失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: ダッシュボード取得
+      description: 店舗の待ち行列状況と統計を取得
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/call-next:
+    post:
+      tags: [Admin]
+      summary: 次を呼ぶ
+      description: 待ち行列の先頭を呼び出し
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallNextResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/tickets/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: チケット状態更新
+      description: チケットのステータスを変更
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTicketStatusRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateTicketStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/store/settings:
+    patch:
+      tags: [Admin]
+      summary: 店舗設定更新
+      description: 店舗の設定を変更
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStoreSettingsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateStoreSettingsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: リクエスト不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: 認証エラー
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: リソースが見つからない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    # ============================================================
+    # Common
+    # ============================================================
+    ApiError:
+      type: object
+      required:
+        - error
+      properties:
+        data:
+          type: 'null'
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    TicketStatus:
+      type: string
+      enum:
+        - waiting
+        - called
+        - seated
+        - no_show
+        - cancelled
+
+    # ============================================================
+    # Guest Schemas
+    # ============================================================
+    RegisterUserRequest:
+      type: object
+      required:
+        - device_id
+        - name
+      properties:
+        device_id:
+          type: string
+        name:
+          type: string
+          maxLength: 100
+        phone:
+          type: string
+
+    RegisterUserResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            user:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                device_id:
+                  type: string
+                name:
+                  type: string
+                phone:
+                  type: string
+                  nullable: true
+        error:
+          type: 'null'
+
+    CreateReservationRequest:
+      type: object
+      required:
+        - store_id
+        - guest_id
+        - party_size
+      properties:
+        store_id:
+          type: string
+          format: uuid
+        guest_id:
+          type: string
+          format: uuid
+        party_size:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    CreateReservationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            reservation:
+              $ref: '#/components/schemas/Reservation'
+        error:
+          type: 'null'
+
+    GetReservationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            reservation:
+              $ref: '#/components/schemas/Reservation'
+              nullable: true
+        error:
+          type: 'null'
+
+    GetWaitingResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            reservation:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                waiting_number:
+                  type: integer
+                party_size:
+                  type: integer
+                status:
+                  $ref: '#/components/schemas/TicketStatus'
+                groups_ahead:
+                  type: integer
+                estimated_wait_minutes:
+                  type: integer
+        error:
+          type: 'null'
+
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        waiting_number:
+          type: integer
+        party_size:
+          type: integer
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        groups_ahead:
+          type: integer
+        estimated_wait_minutes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        called_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ============================================================
+    # Admin Schemas
+    # ============================================================
+    RegisterShopRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    RegisterShopResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            shop:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+            user:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+        error:
+          type: 'null'
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            user:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+        error:
+          type: 'null'
+
+    DashboardResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            store:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                is_accepting:
+                  type: boolean
+            stats:
+              type: object
+              properties:
+                waiting_count:
+                  type: integer
+                called_count:
+                  type: integer
+                seated_count:
+                  type: integer
+                no_show_count:
+                  type: integer
+                cancelled_count:
+                  type: integer
+            queue:
+              type: array
+              items:
+                $ref: '#/components/schemas/QueueItem'
+        error:
+          type: 'null'
+
+    QueueItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        waiting_number:
+          type: integer
+        guest_name:
+          type: string
+        party_size:
+          type: integer
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        wait_time_minutes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CallNextResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            ticket:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                waiting_number:
+                  type: integer
+                guest_name:
+                  type: string
+                party_size:
+                  type: integer
+                status:
+                  $ref: '#/components/schemas/TicketStatus'
+        error:
+          type: 'null'
+
+    UpdateTicketStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+
+    UpdateTicketStatusResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            ticket:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                waiting_number:
+                  type: integer
+                status:
+                  $ref: '#/components/schemas/TicketStatus'
+        error:
+          type: 'null'
+
+    UpdateStoreSettingsRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        estimated_wait_time_per_group:
+          type: integer
+          minimum: 1
+          maximum: 120
+        is_accepting:
+          type: boolean
+
+    UpdateStoreSettingsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            store:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                estimated_wait_time_per_group:
+                  type: integer
+                is_accepting:
+                  type: boolean
+        error:
+          type: 'null'
