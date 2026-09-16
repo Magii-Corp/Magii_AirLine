@@ -8,6 +8,23 @@ Swift + TypeScriptで**店舗の前で待つ体験をなくす**サービスを�
 
 ---
 
+## アーキテクチャ
+
+| コンポーネント | 技術 | ディレクトリ | 状態 |
+|--------------|------|------------|------|
+| iOSアプリ（ユーザー向け） | Swift / SwiftUI | `ios/` | 開発中 |
+| 管理画面（店舗スタッフ向け） | Next.js / TypeScript | `admin/` | 開発中 |
+| APIサーバー | TypeScript / Supabase Edge Functions | `server/src/` | 開発中 |
+| データベース | PostgreSQL / Supabase | `supabase/` | 設定済み |
+
+**重要:** iOSアプリと管理画面は別々に開発し、両方完成した後にSupabase経由で繋げる。
+
+### Supabase Project
+- **Project ID:** `zamceqmfwulajpoownvt`
+- **Dashboard:** https://supabase.com/dashboard/project/zamceqmfwulajpoownvt
+
+---
+
 ## 仕事
 
 iOSアプリ（Swift）とAPIサーバー（TypeScript）の機能追加・修正を行う。
@@ -34,8 +51,10 @@ iOSアプリ（Swift）とAPIサーバー（TypeScript）の機能追加・修�
 ## 入力
 
 - ユーザーからの依頼内容
-- `ios/`（Swift）
-- `server/src/`（TypeScript）
+- `ios/`（Swift - ユーザー向けアプリ）
+- `admin/`（Next.js - 管理画面）
+- `server/src/`（TypeScript - API）
+- `supabase/`（DB設定・マイグレーション）
 - `docs/api.yaml`（API仕様。コードと食い違う場合はこちらが正）
 
 ---
@@ -43,7 +62,9 @@ iOSアプリ（Swift）とAPIサーバー（TypeScript）の機能追加・修�
 ## 出力先
 
 - Swift: `ios/` 以下
-- TypeScript: `server/src/` 以下
+- Next.js管理画面: `admin/` 以下
+- API: `server/src/` 以下
+- DBスキーマ: `supabase/migrations/` 以下
 - API仕様を変えた場合は `docs/api.yaml` も更新する
 
 ---
@@ -52,7 +73,8 @@ iOSアプリ（Swift）とAPIサーバー（TypeScript）の機能追加・修�
 
 次の**すべて**を満たしたら終了:
 
-- [ ] `npm run typecheck` と `npm test` が通る
+- [ ] `cd server && npm run typecheck && npm test` が通る
+- [ ] `cd admin && npm run typecheck && npm test` が通る
 - [ ] `xcodebuild test` が通る
 - [ ] 変更したファイルと内容を箇条書きで報告した
 
@@ -71,6 +93,10 @@ iOSアプリ（Swift）とAPIサーバー（TypeScript）の機能追加・修�
 ---
 
 ## 関連スキル
+
+### Supabase（必須）
+- [supabase](./supabase/supabase-Skills.md#1-supabase) - Supabase関連の作業時は常に使用
+- [supabase-postgres-best-practices](./supabase/supabase-Skills.md#2-supabase-postgres-best-practices) - SQL/DB設計時は常に使用
 
 ### Swift（必須）
 - [SwiftUI Pro](./swift/swift-Skills.md#1-swiftui-pro) - 常に使用
