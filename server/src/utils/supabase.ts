@@ -1,30 +1,34 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database.js";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl) {
-  throw new Error("Missing SUPABASE_URL environment variable");
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing ${name} environment variable`);
+  }
+  return value;
 }
 
-if (!supabaseAnonKey) {
-  throw new Error("Missing SUPABASE_ANON_KEY environment variable");
-}
+// キー名は新形式 (publishable / secret)。レガシーの anon / service_role は使わない。
+const supabaseUrl = requireEnv("SUPABASE_URL");
+const supabasePublishableKey = requireEnv("SUPABASE_PUBLISHABLE_KEY");
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
 /**
  * Supabase client for anonymous/public access
  * Use for client-side operations with RLS
  */
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient<Database>(
+  supabaseUrl,
+  supabasePublishableKey
+);
 
 /**
- * Supabase admin client with service role key
+ * Supabase admin client with the secret key
  * Use for server-side operations that bypass RLS
  */
-export const supabaseAdmin = supabaseServiceKey
-  ? createClient<Database>(supabaseUrl, supabaseServiceKey, {
+export const supabaseAdmin = supabaseSecretKey
+  ? createClient<Database>(supabaseUrl, supabaseSecretKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -37,7 +41,7 @@ export const supabaseAdmin = supabaseServiceKey
  * Use for authenticated user operations
  */
 export function createSupabaseClient(accessToken: string) {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  return createClient<Database>(supabaseUrl, supabasePublishableKey, {
     global: {
       headers: {
         Authorization: `Bearer ${accessToken}`,

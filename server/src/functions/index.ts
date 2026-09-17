@@ -1,5 +1,13 @@
-export { registerUser } from "./register-user.js";
-export { createReservation } from "./create-reservation.js";
-export { getReservation } from "./get-reservation.js";
-export { callNext } from "./call-next.js";
-export { getDashboard } from "./get-dashboard.js";
+export { getTickets } from "./admin/get-tickets.js";
+export { login } from "./admin/login.js";
+export { callNext } from "./admin/call-next.js";
+export { getEvent } from "./admin/get-event.js";
+export { resetEvent } from "./admin/reset-event.js";
+export { changeTicketState } from "./admin/change-ticket-state.js";
+export { finishTicket } from "./admin/finish-ticket.js";
+export {
+  changeAvgMinutesPerParty,
+  changeOpenTime,
+  changeCloseTime,
+  changeStoreState,
+} from "./admin/change-store-settings.js";
