@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  callNext,
   changeAvgMinutesPerParty,
   changeCloseTime,
   changeOpenTime,
@@ -78,17 +79,24 @@ export default function SettingsPage() {
     if (!success) setForm((current) => ({ ...current, status: previousStatus }));
   };
 
-  return (
-    <main className="dashboard-shell">
-      <header className="dashboard-header">
-        <Link href="/dashboard" className="dashboard-brand settings-brand">
-          <div className="brand-mark small">M</div>
-          <div><b>Magii AirLine</b><span>店舗管理</span></div>
-        </Link>
-        <Link href="/dashboard" className="header-link">← ダッシュボード</Link>
-      </header>
+  const handleCallNext = () => {
+    if (!email || loadingAction) return;
+    void runChange("callNext", () => callNext(email));
+  };
 
-      <div className="settings-content">
+  return (
+    <main className="admin-console">
+      <aside className="console-sidebar settings-sidebar">
+        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii</b><span>AirLine Admin</span></div></div>
+        <nav className="console-nav" aria-label="管理メニュー">
+          <Link href="/dashboard"><span>▦</span>ダッシュボード</Link>
+          <Link href="/settings" className="active"><span>⚙</span>店舗設定</Link>
+        </nav>
+        <button className="sidebar-call-button" onClick={handleCallNext} disabled={!email || loadingAction !== null}><span>▶</span><b>{loadingAction === "callNext" ? "呼出中…" : "次を呼ぶ"}</b></button>
+        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
+      </aside>
+      <div className="console-main">
+        <div className="settings-content console-settings">
         <section className="settings-heading">
           <p className="eyebrow">STORE SETTINGS</p>
           <h1>店舗設定</h1>
@@ -120,6 +128,7 @@ export default function SettingsPage() {
 
           {error && <p className="form-error settings-message error" role="alert">{error}</p>}
           {message && <p className="settings-message success" role="status">✓ {message}</p>}
+        </div>
         </div>
       </div>
     </main>
