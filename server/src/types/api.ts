@@ -1,211 +1,145 @@
 /**
  * API Request/Response Types
+ *
+ * DB は snake_case、API は camelCase。変換は utils/serialize.ts に集約する。
  */
 
-import type { TicketStatus } from "./database.js";
+import type {
+  FinalStatus,
+  StoreStatus,
+  TicketStatus,
+} from "./database.js";
 
 // ============================================================
 // Common
 // ============================================================
 
-export interface ApiResponse<T> {
-  data: T;
-  error: null;
+/**
+ * 操作系エンドポイントの共通レスポンス。
+ * 設計メモの方針により、失敗理由はボディに含めない（サーバログには残す）。
+ */
+export interface SuccessResponse {
+  success: boolean;
 }
 
-export interface ApiError {
-  data: null;
-  error: {
-    code: string;
-    message: string;
-  };
+// ============================================================
+// Entities
+// ============================================================
+
+export interface Account {
+  id: string;
+  phoneNumber: string | null;
 }
 
-export type ApiResult<T> = ApiResponse<T> | ApiError;
-
-// ============================================================
-// Guest Endpoints
-// ============================================================
-
-/** POST /auth/registerUser */
-export interface RegisterUserRequest {
-  device_id: string;
+export interface Store {
+  id: string;
+  ownerID: string;
   name: string;
-  phone?: string;
+  /** "HH:MM:SS" */
+  openTime: string;
+  /** "HH:MM:SS" */
+  closeTime: string;
+  avgMinutesPerParty: number;
+  /** 採番カウンタの対象営業日 "YYYY-MM-DD" */
+  counterDate: string | null;
+  lastNumber: number;
+  status: StoreStatus | null;
 }
 
-export interface RegisterUserResponse {
-  user: {
-    id: string;
-    device_id: string;
-    name: string;
-    phone: string | null;
-  };
-}
-
-/** GET /reservation */
-export interface GetReservationRequest {
-  shop_id: string;
-  user_id: string;
-}
-
-export interface GetReservationResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-    created_at: string;
-    called_at: string | null;
-  } | null;
-}
-
-/** POST /reservation */
-export interface CreateReservationRequest {
-  store_id: string;
-  guest_id: string;
-  party_size: number;
-}
-
-export interface CreateReservationResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-    created_at: string;
-  };
-}
-
-/** PATCH /reservation/:id/cancel */
-export interface CancelReservationResponse {
-  success: boolean;
-}
-
-/** PATCH /reservation/:id/arrive */
-export interface ArriveReservationResponse {
-  success: boolean;
-}
-
-/** GET /waiting */
-export interface GetWaitingRequest {
-  shop_id: string;
-  user_id: string;
-}
-
-export interface GetWaitingResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-  } | null;
+export interface Ticket {
+  id: string;
+  account: Account;
+  /** 設計メモの `store: Store` から変更。一覧で店舗情報が件数分重複するため */
+  storeID: string;
+  /** "YYYY-MM-DD" */
+  businessDate: string;
+  waitingNumber: number;
+  name: string;
+  partySize: number | null;
+  status: TicketStatus;
+  /** 管理画面が待ち時間を算出するために必要（設計メモには無い追加分） */
+  createdAt: string;
+  calledAt: string | null;
 }
 
 // ============================================================
 // Admin Endpoints
 // ============================================================
 
-/** POST /auth/registerShop */
-export interface RegisterShopRequest {
-  name: string;
-  email: string;
-  password: string;
+/** GET /admin/getTickets */
+export interface GetTicketsQuery {
+  storeID: string;
 }
 
-export interface RegisterShopResponse {
-  shop: {
-    id: string;
-    name: string;
-  };
-  user: {
-    id: string;
-    email: string;
-  };
+export interface GetTicketsResponse {
+  tickets: Ticket[];
 }
 
-/** POST /auth/login */
+/** POST /admin/login */
 export interface LoginRequest {
-  email: string;
+  storeID: string;
   password: string;
 }
 
-export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-  user: {
-    id: string;
-    email: string;
-  };
+/** POST /admin/callNext */
+export interface CallNextRequest {
+  storeID: string;
 }
 
-/** GET /admin/dashboard */
-export interface DashboardResponse {
-  store: {
-    id: string;
-    name: string;
-    is_accepting: boolean;
-  };
-  stats: {
-    waiting_count: number;
-    called_count: number;
-    seated_count: number;
-    no_show_count: number;
-    cancelled_count: number;
-  };
-  queue: Array<{
-    id: string;
-    waiting_number: number;
-    guest_name: string;
-    party_size: number;
-    status: TicketStatus;
-    wait_time_minutes: number;
-    created_at: string;
-  }>;
+/** GET /admin/getEvent */
+export interface GetEventQuery {
+  storeID: string;
 }
 
-/** POST /admin/call-next */
-export interface CallNextResponse {
-  ticket: {
-    id: string;
-    waiting_number: number;
-    guest_name: string;
-    party_size: number;
-    status: TicketStatus;
-  } | null;
+export interface GetEventResponse {
+  add: boolean;
+  remove: boolean;
+  update: boolean;
 }
 
-/** PATCH /admin/tickets/:id/status */
-export interface UpdateTicketStatusRequest {
-  status: TicketStatus;
+/** POST /admin/resetEvent */
+export interface ResetEventRequest {
+  storeID: string;
 }
 
-export interface UpdateTicketStatusResponse {
-  ticket: {
-    id: string;
-    waiting_number: number;
-    status: TicketStatus;
-  };
+/** POST /admin/changeTicketState — waiting / called の往復のみ */
+export interface ChangeTicketStateRequest {
+  ticketID: string;
+  newState: TicketStatus;
 }
 
-/** PATCH /admin/store/settings */
-export interface UpdateStoreSettingsRequest {
-  name?: string;
-  estimated_wait_time_per_group?: number;
-  is_accepting?: boolean;
+/**
+ * POST /admin/finishTicket
+ * tickets の CHECK 制約が waiting/called しか許さないため、
+ * 確定は ticket_history への移送になる。
+ */
+export interface FinishTicketRequest {
+  ticketID: string;
+  finalState: FinalStatus;
 }
 
-export interface UpdateStoreSettingsResponse {
-  store: {
-    id: string;
-    name: string;
-    estimated_wait_time_per_group: number;
-    is_accepting: boolean;
-  };
+/** POST /admin/changeAvgMinutesPerParty */
+export interface ChangeAvgMinutesPerPartyRequest {
+  storeID: string;
+  newValue: number;
+}
+
+/** POST /admin/changeOpenTime */
+export interface ChangeOpenTimeRequest {
+  storeID: string;
+  /** "HH:MM:SS" */
+  newValue: string;
+}
+
+/** POST /admin/changeCloseTime */
+export interface ChangeCloseTimeRequest {
+  storeID: string;
+  /** "HH:MM:SS" */
+  newValue: string;
+}
+
+/** POST /admin/changeStoreState */
+export interface ChangeStoreStateRequest {
+  storeID: string;
+  newState: StoreStatus;
 }
