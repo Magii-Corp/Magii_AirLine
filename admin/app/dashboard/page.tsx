@@ -1,153 +1,132 @@
 "use client";
 
-import { useState } from "react";
-
-// Mock data for development
-const mockQueue = [
-  { id: "1", waiting_number: 1, guest_name: "山田 太郎", party_size: 2, status: "called", wait_time_minutes: 15 },
-  { id: "2", waiting_number: 2, guest_name: "鈴木 花子", party_size: 4, status: "waiting", wait_time_minutes: 10 },
-  { id: "3", waiting_number: 3, guest_name: "田中 一郎", party_size: 1, status: "waiting", wait_time_minutes: 5 },
-];
-
-const mockStats = {
-  waiting_count: 2,
-  called_count: 1,
-  seated_count: 12,
-  no_show_count: 2,
-  cancelled_count: 1,
-};
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminTicket, callNext, changeTicketState, getTickets, TicketStatus } from "@/lib/admin-api";
 
 export default function DashboardPage() {
-  const [queue, setQueue] = useState(mockQueue);
-  const [stats] = useState(mockStats);
-  const [isAccepting, setIsAccepting] = useState(true);
+  const [email, setEmail] = useState("");
+  const [tickets, setTickets] = useState<AdminTicket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionID, setActionID] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const handleCallNext = async () => {
-    // TODO: Implement API call
-    const nextWaiting = queue.find((t) => t.status === "waiting");
-    if (nextWaiting) {
-      setQueue(
-        queue.map((t) =>
-          t.id === nextWaiting.id ? { ...t, status: "called" } : t
-        )
-      );
+  const loadTickets = useCallback(async () => {
+    if (!email) return;
+    try {
+      const result = await getTickets(email);
+      setTickets(result.tickets.filter((ticket) => ticket.status === "waiting" || ticket.status === "called"));
+    } catch {
+      setError("チケットを取得できませんでした");
+    } finally {
+      setLoading(false);
+    }
+  }, [email]);
+
+  useEffect(() => {
+    try { setEmail(sessionStorage.getItem("magii-admin-email") || "owner@example.com"); }
+    catch { setEmail("owner@example.com"); }
+  }, []);
+  useEffect(() => { void loadTickets(); }, [loadTickets]);
+  const waitingCount = useMemo(() => tickets.filter((ticket) => ticket.status === "waiting").length, [tickets]);
+  const calledCount = tickets.length - waitingCount;
+  const nextTicket = useMemo(() => tickets.find((ticket) => ticket.status === "waiting") ?? null, [tickets]);
+
+  const updateStatus = async (ticketID: string, newState: TicketStatus) => {
+    setActionID(ticketID);
+    setError("");
+    try {
+      const result = await changeTicketState(ticketID, newState);
+      if (!result.success) throw new Error(result.message);
+      setTickets((current) => current.map((ticket) => ticket.id === ticketID ? { ...ticket, status: newState } : ticket));
+    } catch (error) {
+      setError(error instanceof Error && error.message ? error.message : "ステータスを変更できませんでした");
+    } finally {
+      setActionID(null);
     }
   };
 
-  const handleStatusChange = async (id: string, newStatus: string) => {
-    // TODO: Implement API call
-    setQueue(
-      queue.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
-    );
+  const handleCallNext = async () => {
+    const next = tickets.find((ticket) => ticket.status === "waiting");
+    if (!next) return;
+    setActionID("call-next");
+    setError("");
+    try {
+      const result = await callNext(email);
+      if (!result.success) throw new Error(result.message);
+      setTickets((current) => current.map((ticket) => ticket.id === next.id ? { ...ticket, status: "called" } : ticket));
+    } catch (error) {
+      setError(error instanceof Error && error.message ? error.message : "次のお客様を呼び出せませんでした");
+    } finally {
+      setActionID(null);
+    }
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold">ダッシュボード</h1>
-          <p className="text-text-secondary">サンプル店舗</p>
-        </div>
-        <button
-          onClick={() => setIsAccepting(!isAccepting)}
-          className={`px-4 py-2 rounded-full text-sm font-medium ${
-            isAccepting
-              ? "bg-accent-green text-black"
-              : "bg-error text-white"
-          }`}
-        >
-          {isAccepting ? "受付中" : "受付停止"}
-        </button>
-      </header>
+    <main className="admin-console dashboard-console">
+      <aside className="console-sidebar">
+        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii</b><span>AirLine Admin</span></div></div>
+        <nav className="console-nav" aria-label="管理メニュー">
+          <Link href="/dashboard" className="active"><span>▦</span>ダッシュボード</Link>
+          <Link href="/settings"><span>⚙</span>店舗設定</Link>
+        </nav>
+        <button className="sidebar-call-button" onClick={handleCallNext} disabled={waitingCount === 0 || actionID !== null}><span>▶</span><b>{actionID === "call-next" ? "呼出中…" : "次を呼ぶ"}</b></button>
+        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
+      </aside>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-        <div className="card text-center">
-          <p className="text-4xl font-bold">{stats.waiting_count}</p>
-          <p className="text-text-secondary text-sm">待機中</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-accent">{stats.called_count}</p>
-          <p className="text-text-secondary text-sm">呼び出し中</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-accent-green">{stats.seated_count}</p>
-          <p className="text-text-secondary text-sm">着席済み</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-error">{stats.no_show_count}</p>
-          <p className="text-text-secondary text-sm">不在</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-text-secondary">{stats.cancelled_count}</p>
-          <p className="text-text-secondary text-sm">キャンセル</p>
-        </div>
-      </div>
+      <div className="console-main">
+        <div className="console-body">
+          <section className="call-workspace">
+            <section className="db-metrics">
+              <article><div><span>WAITING</span><small>待機中</small></div><strong>{waitingCount}</strong><em className="metric-dot amber" /></article>
+              <article><div><span>CALLED</span><small>呼び出し中</small></div><strong>{calledCount}</strong><em className="metric-dot green" /></article>
+              <article><div><span>TOTAL ACTIVE</span><small>有効なチケット</small></div><strong>{tickets.length}</strong><em className="metric-dot blue" /></article>
+            </section>
 
-      {/* Call Next Button */}
-      <button
-        onClick={handleCallNext}
-        className="w-full h-20 bg-white text-black text-xl font-bold rounded-2xl mb-8 hover:bg-opacity-90 transition-colors"
-      >
-        次を呼ぶ
-      </button>
-
-      {/* Queue */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold mb-4">待ち行列</h2>
-
-        {queue.length === 0 ? (
-          <div className="card text-center py-12">
-            <p className="text-text-secondary">現在待機中のお客様はいません</p>
-          </div>
-        ) : (
-          queue.map((ticket) => (
-            <div
-              key={ticket.id}
-              className={`card flex items-center justify-between ${
-                ticket.status === "called" ? "border-2 border-accent" : ""
-              }`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-card-secondary flex items-center justify-center">
-                  <span className="text-xl font-bold">{ticket.waiting_number}</span>
+            <section className="next-customer-panel" aria-label="次に呼ばれるお客様">
+              <div className="next-customer-label"><span>▶</span><div><small>UP NEXT</small><b>次に呼ばれるお客様</b></div></div>
+              {nextTicket ? (
+                <div className="next-customer-data">
+                  <span className="next-number">{nextTicket.waitingNumber}</span>
+                  <b className="next-name">{nextTicket.name}</b>
+                  <span className="next-party">{nextTicket.partySize}名様</span>
+                  <span className="next-phone">{nextTicket.account.phone_number}</span>
                 </div>
-                <div>
-                  <p className="font-medium">{ticket.guest_name}</p>
-                  <p className="text-text-secondary text-sm">
-                    {ticket.party_size}名 · {ticket.wait_time_minutes}分待ち
-                  </p>
-                </div>
-              </div>
+              ) : <p className="next-customer-empty">現在、呼び出し待ちのお客様はいません</p>}
+            </section>
 
-              <div className="flex items-center gap-2">
-                {ticket.status === "called" && (
-                  <>
-                    <button
-                      onClick={() => handleStatusChange(ticket.id, "seated")}
-                      className="px-3 py-1 bg-accent-green text-black rounded-full text-sm"
-                    >
-                      着席
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange(ticket.id, "no_show")}
-                      className="px-3 py-1 bg-error text-white rounded-full text-sm"
-                    >
-                      不在
-                    </button>
-                  </>
-                )}
-                {ticket.status === "waiting" && (
-                  <span className="px-3 py-1 bg-card-secondary rounded-full text-sm text-text-secondary">
-                    待機中
-                  </span>
-                )}
-              </div>
+            <div className="primary-call-area">
+              <button className="db-call-button" onClick={handleCallNext} disabled={waitingCount === 0 || actionID !== null}><span>▶</span><div><small>NEXT ACTION</small><b>{actionID === "call-next" ? "呼び出し中…" : "次を呼ぶ"}</b></div></button>
             </div>
-          ))
-        )}
+          </section>
+
+          <section className="db-panel">
+            <div className="db-panel-header"><div><h2>Tickets</h2><p>現在の待ちチケットを管理</p></div><div className="table-meta"><span>{tickets.length} records</span><button onClick={() => void loadTickets()}>↻ Refresh</button></div></div>
+            {error && <p className="form-error queue-error" role="alert">{error}</p>}
+            {loading ? <div className="empty-state">データを読み込んでいます…</div> : tickets.length === 0 ? <div className="empty-state"><span>✓</span><b>対象データはありません</b></div> : (
+              <div className="db-table-wrap">
+                <table className="db-table">
+                  <thead><tr><th>待ち番号</th><th>お客様</th><th>人数</th><th>電話番号</th><th>営業日</th><th>ステータス</th><th>操作</th></tr></thead>
+                  <tbody>
+                    {tickets.map((ticket) => (
+                      <tr key={ticket.id}>
+                        <td><span className="waiting-number-badge">{ticket.waitingNumber}</span></td>
+                        <td><div className="customer-cell"><span>{ticket.name.slice(0, 1)}</span><div><b>{ticket.name}</b></div></div></td>
+                        <td><b>{ticket.partySize}</b><small className="unit-label">名</small></td>
+                        <td className="mono-cell">{ticket.account.phone_number}</td>
+                        <td className="mono-cell">{ticket.business_date}</td>
+                        <td><span className={`db-status ${ticket.status}`}><i />{ticket.status === "called" ? "CALLED" : "WAITING"}</span></td>
+                        <td><select className="db-select" value={ticket.status} disabled={actionID !== null} onChange={(event) => void updateStatus(ticket.id, event.target.value as TicketStatus)} aria-label={`${ticket.waitingNumber}番のステータス`}><option value="waiting">待機中</option><option value="called">呼び出し中</option></select></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <footer className="db-panel-footer"><span>Last synced: just now</span><span>Showing {tickets.length} of {tickets.length}</span></footer>
+          </section>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

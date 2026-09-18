@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { login } from "@/lib/admin-api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,79 +12,45 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
+    if (!email.trim() || !password) {
+      setError("メールアドレスとパスワードを入力してください");
+      return;
+    }
     setLoading(true);
-
     try {
-      // TODO: Implement Supabase auth
-      console.log("Login:", { email, password });
-      router.push("/dashboard");
-    } catch (err) {
-      setError("ログインに失敗しました");
+      const result = await login({ email: email.trim(), password });
+      if (!result.success) throw new Error(result.message);
+      try {
+        sessionStorage.setItem("magii-admin-email", email.trim());
+      } catch {
+        // Storageが無効でもログイン後の画面遷移は止めない。
+      }
+      router.replace("/dashboard");
+    } catch (error) {
+      setError(error instanceof Error && error.message ? error.message : "店舗IDまたはパスワードをご確認ください");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Magii AirLine</h1>
-          <p className="text-text-secondary">管理画面にログイン</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-text-secondary mb-2">
-              メールアドレス
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input"
-              placeholder="email@example.com"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-text-secondary mb-2">
-              パスワード
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          {error && (
-            <p className="text-error text-sm">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            className="btn-primary mt-6"
-            disabled={loading}
-          >
-            {loading ? "ログイン中..." : "ログイン"}
-          </button>
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <div className="brand-mark" aria-hidden="true">M</div>
+        <p className="eyebrow">MAGII AIRLINE</p>
+        <h1 className="auth-title">おかえりなさい</h1>
+        <p className="auth-copy">店舗の待ち列を、ここからスマートに管理。</p>
+        <form onSubmit={handleSubmit} className="auth-form" noValidate>
+          <label className="field-label">メールアドレス<input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@example.com" inputMode="email" autoComplete="email" autoCapitalize="none" /></label>
+          <label className="field-label">パスワード<input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="パスワードを入力" autoComplete="current-password" /></label>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={loading}>{loading ? "ログイン中…" : "ログイン"}</button>
         </form>
-
-        <p className="text-center text-text-secondary mt-6">
-          アカウントをお持ちでない方は
-          <Link href="/auth/register" className="text-accent ml-1">
-            新規登録
-          </Link>
-        </p>
-      </div>
-    </div>
+        <p className="auth-switch">はじめてご利用ですか？ <Link href="/auth/register">新規登録</Link></p>
+      </section>
+    </main>
   );
 }
