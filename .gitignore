@@ -3,3 +3,6 @@
 .DS_Store
 supabase/.temp/
 supabase/.branches/
+admin/adminapi設計.txt
+admin/node_modules
+admin/.next
