@@ -4,7 +4,7 @@
  */
 
 import { resetEventSchema } from "../../utils/validation.js";
-import { OK, fail, prepare } from "./_shared.js";
+import { OK, fail, prepare } from "../_shared.js";
 import type { SuccessResponse } from "../../types/api.js";
 
 const WHERE = "resetEvent";

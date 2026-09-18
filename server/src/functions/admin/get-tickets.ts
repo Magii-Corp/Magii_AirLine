@@ -6,7 +6,7 @@
 import { todayBusinessDate } from "../../utils/business-date.js";
 import { getTicketsSchema } from "../../utils/validation.js";
 import { toTicket } from "../../utils/serialize.js";
-import { prepare } from "./_shared.js";
+import { prepare } from "../_shared.js";
 import type { GetTicketsResponse, Ticket } from "../../types/api.js";
 import type { AccountRow } from "../../types/database.js";
 
@@ -20,6 +20,18 @@ export async function getTickets(
 
   const { storeID } = p.data;
   const businessDate = todayBusinessDate();
+
+  const { data: store, error: storeError } = await p.db
+    .from("stores")
+    .select("*")
+    .eq("id", storeID)
+    .maybeSingle();
+
+  if (storeError) {
+    console.warn(`[${WHERE}] DB error: ${storeError.message}`);
+    return { tickets: [] };
+  }
+  if (!store) return { tickets: [] };
 
   const { data: rows, error } = await p.db
     .from("tickets")
@@ -47,7 +59,7 @@ export async function getTickets(
   );
 
   const tickets: Ticket[] = rows.map((row) =>
-    toTicket(row, byId.get(row.account_id) ?? null)
+    toTicket(row, byId.get(row.account_id) ?? null, store)
   );
 
   return { tickets };

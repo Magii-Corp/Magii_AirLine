@@ -1,8 +1,8 @@
 /**
  * POST /admin/login
  *
- * storeID からオーナー (stores.owner_id → staff_accounts) を引き、
- * そのパスワードと照合する。
+ * storeID で stores を引き、stores.password と直接照合する
+ * （旧 staff_accounts 経由の間接照合は廃止。stores自身が認証情報を持つ）。
  *
  * NOTE: 設計メモの方針によりトークンは発行しない。したがって成功しても
  * 以降のリクエストが認証済みになるわけではない（他のエンドポイントは
@@ -11,7 +11,7 @@
 
 import { verifyPassword } from "../../utils/password.js";
 import { loginSchema } from "../../utils/validation.js";
-import { OK, fail, prepare } from "./_shared.js";
+import { OK, fail, prepare } from "../_shared.js";
 import type { SuccessResponse } from "../../types/api.js";
 
 const WHERE = "login";
@@ -24,23 +24,14 @@ export async function login(body: unknown): Promise<SuccessResponse> {
 
   const { data: store, error: storeError } = await p.db
     .from("stores")
-    .select("owner_id")
+    .select("password")
     .eq("id", storeID)
     .maybeSingle();
 
   if (storeError) return fail(WHERE, `DB error: ${storeError.message}`);
   if (!store) return fail(WHERE, `Store not found: ${storeID}`);
 
-  const { data: owner, error: ownerError } = await p.db
-    .from("staff_accounts")
-    .select("password")
-    .eq("id", store.owner_id)
-    .maybeSingle();
-
-  if (ownerError) return fail(WHERE, `DB error: ${ownerError.message}`);
-  if (!owner) return fail(WHERE, `Owner not found for store ${storeID}`);
-
-  const matches = await verifyPassword(password, owner.password);
+  const matches = await verifyPassword(password, store.password);
   if (!matches) return fail(WHERE, `Password mismatch for store ${storeID}`);
 
   return OK;

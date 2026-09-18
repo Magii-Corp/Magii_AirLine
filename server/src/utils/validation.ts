@@ -76,6 +76,61 @@ export const changeStoreStateSchema = z.object({
   newState: storeStatusSchema,
 });
 
+/** 新規作成時のみパスワード強度を要求する（loginは存在チェックのみ） */
+export const newPasswordSchema = z.string().min(8).max(72);
+
+export const registerSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+  password: newPasswordSchema,
+  openTime: timeSchema.optional(),
+  closeTime: timeSchema.optional(),
+  avgMinutesPerParty: z.number().int().min(1).max(120).optional(),
+  counterDate: z.string().optional().nullable(),
+  lastNumber: z.number().int().min(0).optional(),
+  status: storeStatusSchema.optional().nullable(),
+});
+
+// ============================================================
+// Guest Schemas
+// ============================================================
+
+export const phoneSchema = z.string().min(10).max(20);
+
+export const guestRegisterSchema = z.object({
+  phone: phoneSchema,
+  password: newPasswordSchema,
+});
+
+export const guestLoginSchema = z.object({
+  phone: phoneSchema,
+  password: z.string().min(1, "Password is required"),
+});
+
+export const createTicketSchema = z.object({
+  storeID: uuidSchema,
+  accountID: uuidSchema,
+  name: z.string().min(1).max(50),
+  partySize: z.number().int().min(1).max(20).optional(),
+});
+
+export const getMyTicketSchema = z.object({
+  accountID: uuidSchema,
+  storeID: uuidSchema,
+});
+
+export const cancelTicketSchema = z.object({
+  ticketID: uuidSchema,
+});
+
+export const arriveSchema = z.object({
+  ticketID: uuidSchema,
+});
+
+export const getStoreSchema = z.object({
+  storeID: uuidSchema,
+});
+
 // ============================================================
 // Validation Helper
 // ============================================================

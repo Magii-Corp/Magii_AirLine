@@ -16,6 +16,7 @@ import {
 import {
   getTickets,
   login,
+  adminRegister,
   callNext,
   getEvent,
   resetEvent,
@@ -25,6 +26,13 @@ import {
   changeOpenTime,
   changeCloseTime,
   changeStoreState,
+  register,
+  guestLogin,
+  createTicket,
+  getMyTicket,
+  cancelTicket,
+  arrive,
+  getStore,
 } from "./functions/index.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -55,11 +63,22 @@ function queryOf(url: URL): Record<string, string> {
   return Object.fromEntries(url.searchParams.entries());
 }
 
-/** POST 系: ボディを読んで関数に渡し、success をそのまま返す */
-type PostHandler = (body: unknown) => Promise<{ success: boolean }>;
+/** GET 系: クエリを渡して結果をそのまま返す */
+type GetHandler = (query: Record<string, string>) => Promise<unknown>;
+
+const GET_ROUTES: Record<string, GetHandler> = {
+  "/admin/getTickets": getTickets,
+  "/admin/getEvent": getEvent,
+  "/guest/getMyTicket": getMyTicket,
+  "/guest/getStore": getStore,
+};
+
+/** POST 系: ボディを読んで関数に渡し、結果をそのまま返す */
+type PostHandler = (body: unknown) => Promise<unknown>;
 
 const POST_ROUTES: Record<string, PostHandler> = {
   "/admin/login": login,
+  "/admin/register": adminRegister,
   "/admin/callNext": callNext,
   "/admin/resetEvent": resetEvent,
   "/admin/changeTicketState": changeTicketState,
@@ -68,6 +87,11 @@ const POST_ROUTES: Record<string, PostHandler> = {
   "/admin/changeOpenTime": changeOpenTime,
   "/admin/changeCloseTime": changeCloseTime,
   "/admin/changeStoreState": changeStoreState,
+  "/guest/register": register,
+  "/guest/login": guestLogin,
+  "/guest/createTicket": createTicket,
+  "/guest/cancelTicket": cancelTicket,
+  "/guest/arrive": arrive,
 };
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -84,14 +108,12 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     return;
   }
 
-  if (method === "GET" && path === "/admin/getTickets") {
-    send(res, 200, await getTickets(queryOf(url)));
-    return;
-  }
-
-  if (method === "GET" && path === "/admin/getEvent") {
-    send(res, 200, await getEvent(queryOf(url)));
-    return;
+  if (method === "GET") {
+    const handler = GET_ROUTES[path];
+    if (handler) {
+      send(res, 200, await handler(queryOf(url)));
+      return;
+    }
   }
 
   if (method === "POST") {

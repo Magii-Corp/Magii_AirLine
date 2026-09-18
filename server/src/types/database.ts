@@ -35,28 +35,11 @@ export type Database = {
         };
         Relationships: [];
       };
-      staff_accounts: {
-        Row: {
-          id: string;
-          email: string | null;
-          password: string | null;
-        };
-        Insert: {
-          id?: string;
-          email?: string | null;
-          password?: string | null;
-        };
-        Update: {
-          id?: string;
-          email?: string | null;
-          password?: string | null;
-        };
-        Relationships: [];
-      };
       stores: {
         Row: {
           id: string;
-          owner_id: string;
+          store_mail: string;
+          password: string;
           name: string;
           /** time without time zone ("HH:MM:SS") */
           open_time: string;
@@ -71,7 +54,8 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          owner_id: string;
+          store_mail: string;
+          password: string;
           name: string;
           open_time?: string;
           close_time?: string;
@@ -82,7 +66,8 @@ export type Database = {
         };
         Update: {
           id?: string;
-          owner_id?: string;
+          store_mail?: string;
+          password?: string;
           name?: string;
           open_time?: string;
           close_time?: string;
@@ -106,6 +91,8 @@ export type Database = {
           status: TicketStatus;
           created_at: string;
           called_at: string | null;
+          /** ゲストの[到着しました]操作時刻。status/確定とは独立 */
+          arrived_at: string | null;
         };
         Insert: {
           id?: string;
@@ -118,6 +105,7 @@ export type Database = {
           status?: TicketStatus;
           created_at?: string;
           called_at?: string | null;
+          arrived_at?: string | null;
         };
         Update: {
           id?: string;
@@ -130,6 +118,7 @@ export type Database = {
           status?: TicketStatus;
           created_at?: string;
           called_at?: string | null;
+          arrived_at?: string | null;
         };
         Relationships: [];
       };
@@ -214,8 +203,6 @@ export type StoreStatus = "open" | "paused" | "closed";
 // NOTE: API 側 (types/api.ts) の Account / Store / Ticket は camelCase の
 // レスポンス型。混同を避けるため DB の行型は Row 接尾辞で統一する。
 export type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
-export type StaffAccountRow =
-  Database["public"]["Tables"]["staff_accounts"]["Row"];
 export type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
 export type TicketRow = Database["public"]["Tables"]["tickets"]["Row"];
 export type TicketHistoryRow =
@@ -224,16 +211,12 @@ export type StoreEventsRow =
   Database["public"]["Tables"]["store_events"]["Row"];
 
 export type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
-export type StaffAccountInsert =
-  Database["public"]["Tables"]["staff_accounts"]["Insert"];
 export type StoreInsert = Database["public"]["Tables"]["stores"]["Insert"];
 export type TicketInsert = Database["public"]["Tables"]["tickets"]["Insert"];
 export type TicketHistoryInsert =
   Database["public"]["Tables"]["ticket_history"]["Insert"];
 
 export type AccountUpdate = Database["public"]["Tables"]["accounts"]["Update"];
-export type StaffAccountUpdate =
-  Database["public"]["Tables"]["staff_accounts"]["Update"];
 export type StoreUpdate = Database["public"]["Tables"]["stores"]["Update"];
 export type TicketUpdate = Database["public"]["Tables"]["tickets"]["Update"];
 export type TicketHistoryUpdate =
