@@ -10,7 +10,7 @@
 
 import { getEventSchema } from "../../utils/validation.js";
 import { toEvent } from "../../utils/serialize.js";
-import { prepare } from "./_shared.js";
+import { prepare } from "../_shared.js";
 import type { GetEventResponse } from "../../types/api.js";
 
 const WHERE = "getEvent";

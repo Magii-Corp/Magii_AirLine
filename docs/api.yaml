@@ -22,12 +22,9 @@ info:
 
     | フラグ | 立つ操作 |
     |---|---|
-    | `add` | チケットが増えたとき — **現時点では該当なし**（下記） |
-    | `remove` | `finishTicket` |
-    | `update` | `callNext` / `changeTicketState` / 店舗設定の変更4種 |
-
-    ⚠️ **`add` は当面ずっと `false` のまま**。チケットが増えるのは発券＝ゲスト API の
-    担当で、ゲスト API は設計メモ待ちのため未実装。
+    | `add` | `guest/createTicket` |
+    | `remove` | `finishTicket` / `guest/cancelTicket` |
+    | `update` | `callNext` / `changeTicketState` / 店舗設定の変更4種 / `guest/arrive` |
 
     ⚠️ 管理画面を複数台で開くと、片方が `resetEvent` した瞬間にもう片方が変更を
     取りこぼす。1台運用を前提とした設計。
@@ -45,14 +42,26 @@ info:
 
     ## ゲスト向け API
 
-    別途設計メモを受け取ってから作る。v2.0.0 にあったゲスト系
-    （registerUser / reservation / waiting）は本版で一旦削除した。
+    来店客（アプリ側）向け。`accounts.phoneNumber` + パスワードで `register`/`login` する。
+    どちらも成功時は `accountID` を返し、以降の `createTicket`/`getMyTicket` はその
+    `accountID` を使う（`register` は電話番号が既に登録済みなら `success: false` になるので
+    その場合は `login` を使う）。
+
+    「呼ばれたか / 取り消されたか」を別途ポーリングするAPIは用意していない。
+    ゲストが追跡するチケットは常に1件なので、`getMyTicket` を直接ポーリングすれば
+    `ticket.status` で waiting/called を判定でき、店舗側の操作で決着した場合は
+    `ticket: null` と `finalStatus` で通知される。
+
+    `arrive`（[到着しました]）は `tickets.arrivedAt` に時刻を記録するだけで、
+    `status` は変えない。着席確定 (`seated`) は引き続き店舗側の `finishTicket` が行う
+    （飲食店の席の準備を想定した設計）。
 
     ## 認証
 
-    **実装していない。** `login` は照合するだけでトークンを発行しないため、
-    以降のリクエストは `storeID` さえ分かれば誰でも呼べる。公開前に必ず塞ぐこと。
-  version: 3.0.0
+    **実装していない。** `login`（admin/guestとも）は照合するだけでトークンを発行しない
+    ため、以降のリクエストは `storeID` さえ分かれば誰でも呼べる。ゲストAPIも同様に
+    `accountID` / `ticketID` さえ分かれば誰でも呼べる。公開前に必ず塞ぐこと。
+  version: 4.0.0
 
 servers:
   - url: http://127.0.0.1:8787
@@ -61,6 +70,8 @@ servers:
 tags:
   - name: Admin
     description: 管理者（店舗スタッフ）向けAPI
+  - name: Guest
+    description: 来店客（アプリ）向けAPI
 
 paths:
   /admin/getTickets:
@@ -90,8 +101,8 @@ paths:
       tags: [Admin]
       summary: ログイン
       description: |
-        `storeID` からオーナー（`stores.ownerID` → `staff_accounts`）を引き、
-        パスワードを照合する。パスワードは scrypt ハッシュで保存されている前提。
+        `storeID` で `stores` を引き、`stores.password` を直接照合する
+        （パスワードは scrypt ハッシュで保存されている前提）。
 
         **トークンは発行しない。** 成功しても以降のリクエストが認証済みに
         なるわけではない。
@@ -105,6 +116,34 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+
+  /admin/register:
+    post:
+      tags: [Admin]
+      summary: 店舗の新規作成
+      description: |
+        `stores` 行を作る唯一の手段。`email`（`store_mail`）の重複は `success: false`。
+
+        `openTime`/`closeTime`/`avgMinutesPerParty`/`counterDate`/`lastNumber`/`status`
+        は省略可能で、省略時はDBのデフォルト値が使われる。
+
+        ⚠️ 設計書上のレスポンスは `{ success: boolean }` のみだが、それだと登録後に
+        `storeID` を知る手段が無く `login` できないため、実用上の必要性から
+        `storeID` も返すようにしている。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRegisterRequest'
+      responses:
+        '200':
+          description: '成功時は storeID を含む。失敗時は storeID: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRegisterResponse'
 
   /admin/callNext:
     post:
@@ -278,6 +317,167 @@ paths:
         '200':
           $ref: '#/components/responses/Success'
 
+  /guest/register:
+    post:
+      tags: [Guest]
+      summary: ユーザー登録（電話番号+パスワード）
+      description: |
+        `phone`（`accounts.phoneNumber`）+ `password` でアカウントを新規作成する。
+        電話番号は一意制約があるため、既に登録済みなら `success: false` になる
+        （その場合は `login` を使う）。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestRegisterRequest'
+      responses:
+        '200':
+          description: '成功時は accountID を含む。失敗時は accountID: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestAuthResponse'
+
+  /guest/login:
+    post:
+      tags: [Guest]
+      summary: ログイン（電話番号+パスワード）
+      description: |
+        `phone` + `password` で既存アカウントを認証する。`register` と対称。
+        以降の `createTicket`/`getMyTicket` はここで得た `accountID` を使う。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestLoginRequest'
+      responses:
+        '200':
+          description: '成功時は accountID を含む。失敗時は accountID: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestAuthResponse'
+
+  /guest/createTicket:
+    post:
+      tags: [Guest]
+      summary: 発券（予約作成）
+      description: |
+        `stores.status === 'open'` のときのみ受け付ける。
+
+        同一アカウント・同一店舗・当日のアクティブなチケット（waiting/called）が
+        既にあれば、新規作成せずそれをそのまま返す（二重タップ・リトライへの耐性）。
+
+        採番は `callNext` と同様 compare-and-swap 方式で、同時発券でも欠番・重複が
+        起きない。`add` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '200':
+          description: '成功時は ticket を含む。失敗時は ticket: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTicketResponse'
+
+  /guest/getMyTicket:
+    get:
+      tags: [Guest]
+      summary: 自分のチケット取得（ポーリング用）
+      description: |
+        当日の自分のチケットを取得する。ゲスト側のポーリングはこのAPI 1本に統合しており、
+        「呼ばれたか/取り消されたか」を別途通知するAPIは無い。
+
+        - チケットが進行中（waiting/called）なら `ticket` に入る。`status` で判定する
+        - 店舗側の操作（`finishTicket`）で決着した場合は `ticket: null` になり、
+          代わりに当日分の `finalStatus`（seated/no_show/cancelled）が入る
+        - 当日まだ何も無ければ両方 `null`
+      x-implemented: true
+      parameters:
+        - name: accountID
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/StoreIDQuery'
+      responses:
+        '200':
+          description: 成功（該当なし・失敗いずれも ticket:null, finalStatus:null）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMyTicketResponse'
+
+  /guest/cancelTicket:
+    post:
+      tags: [Guest]
+      summary: キャンセル
+      description: |
+        `waiting` の間のみキャンセル可能（状態遷移図参照）。`called`（呼び出し済み）後は
+        `success: false` になる。店舗側の `finishTicket`（no_show 等）に委ねる。
+
+        `remove` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /guest/arrive:
+    post:
+      tags: [Guest]
+      summary: 到着報告
+      description: |
+        [到着しました] ボタン。`tickets.arrivedAt` に現在時刻を記録するだけで、
+        `status` は変えない。着席確定 (`seated`) は引き続き店舗側の `finishTicket` が行う
+        （飲食店の席の準備を想定した設計。要件定義書「未決定事項5」への対応）。
+
+        `update` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /guest/getStore:
+    get:
+      tags: [Guest]
+      summary: 店舗情報取得（QR読み取り後の表示用）
+      description: |
+        失敗時（店舗が無い・入力不正・DBエラー）は `store: null` とゼロ値を返す。
+
+        `estimatedWaitMinutes` は `waitingCount * avgMinutesPerParty` の単純計算。
+      x-implemented: true
+      parameters:
+        - $ref: '#/components/parameters/StoreIDQuery'
+      responses:
+        '200':
+          description: 成功（失敗時も200、ゼロ値）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStoreResponse'
+
   /health:
     get:
       tags: [Admin]
@@ -365,15 +565,14 @@ components:
     Store:
       type: object
       description: |
-        現在どのエンドポイントも Store 全体は返さないが、型として定義しておく。
-        `counterDate` / `lastNumber` は発券の採番に使う内部状態。
+        `counterDate` / `lastNumber` は発券の採番に使う内部状態で、ゲスト側では使わない。
       properties:
         id:
           type: string
           format: uuid
-        ownerID:
+        email:
           type: string
-          format: uuid
+          description: '`stores.store_mail`。ログインに使う店舗のメールアドレス'
         name:
           type: string
         openTime:
@@ -401,10 +600,8 @@ components:
           format: uuid
         account:
           $ref: '#/components/schemas/Account'
-        storeID:
-          type: string
-          format: uuid
-          description: 一覧で店舗情報が件数分重複するため、ネストせず ID のみ持つ
+        store:
+          $ref: '#/components/schemas/Store'
         businessDate:
           type: string
           format: date
@@ -412,7 +609,7 @@ components:
           type: integer
         name:
           type: string
-          description: '`tickets.name`。`accounts` に氏名が無いため発券時に受け取った値'
+          description: '`tickets.name`。`accounts` に氏名は無いため発券時に受け取った値'
         partySize:
           type: integer
           nullable: true
@@ -426,6 +623,11 @@ components:
           type: string
           format: date-time
           nullable: true
+        arrivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: '`arrive`（[到着しました]）を押した時刻。status/確定とは独立'
 
     # ============================================================
     # Requests / Responses
@@ -449,7 +651,6 @@ components:
       properties:
         add:
           type: boolean
-          description: ⚠️ ゲスト API 未実装のため当面ずっと false
         remove:
           type: boolean
         update:
@@ -475,6 +676,54 @@ components:
           format: uuid
         password:
           type: string
+
+    AdminRegisterRequest:
+      type: object
+      required:
+        - email
+        - name
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        openTime:
+          type: string
+          example: '10:00:00'
+        closeTime:
+          type: string
+          example: '21:00:00'
+        avgMinutesPerParty:
+          type: integer
+          minimum: 1
+          maximum: 120
+        counterDate:
+          type: string
+          format: date
+          nullable: true
+        lastNumber:
+          type: integer
+          minimum: 0
+        status:
+          $ref: '#/components/schemas/StoreStatus'
+
+    AdminRegisterResponse:
+      type: object
+      required:
+        - success
+        - storeID
+      properties:
+        success:
+          type: boolean
+        storeID:
+          type: string
+          format: uuid
+          nullable: true
 
     ChangeTicketStateRequest:
       type: object
@@ -543,3 +792,115 @@ components:
             - open
             - paused
             - closed
+
+    # ============================================================
+    # Guest Requests / Responses
+    # ============================================================
+    TicketIDBody:
+      type: object
+      required:
+        - ticketID
+      properties:
+        ticketID:
+          type: string
+          format: uuid
+
+    GuestRegisterRequest:
+      type: object
+      required:
+        - phone
+        - password
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 8
+
+    GuestLoginRequest:
+      type: object
+      required:
+        - phone
+        - password
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+
+    GuestAuthResponse:
+      type: object
+      required:
+        - success
+        - accountID
+      properties:
+        success:
+          type: boolean
+        accountID:
+          type: string
+          format: uuid
+          nullable: true
+
+    CreateTicketRequest:
+      type: object
+      required:
+        - storeID
+        - accountID
+        - name
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        accountID:
+          type: string
+          format: uuid
+        name:
+          type: string
+        partySize:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    CreateTicketResponse:
+      type: object
+      required:
+        - success
+        - ticket
+      properties:
+        success:
+          type: boolean
+        ticket:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Ticket'
+
+    GetMyTicketResponse:
+      type: object
+      required:
+        - ticket
+        - finalStatus
+      properties:
+        ticket:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Ticket'
+        finalStatus:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/FinalStatus'
+
+    GetStoreResponse:
+      type: object
+      required:
+        - store
+        - waitingCount
+        - estimatedWaitMinutes
+      properties:
+        store:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Store'
+        waitingCount:
+          type: integer
+        estimatedWaitMinutes:
+          type: integer

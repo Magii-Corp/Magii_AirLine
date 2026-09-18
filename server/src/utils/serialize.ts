@@ -27,7 +27,7 @@ export function toAccount(row: AccountRow): Account {
 export function toStore(row: StoreRow): Store {
   return {
     id: row.id,
-    ownerID: row.owner_id,
+    email: row.store_mail,
     name: row.name,
     openTime: row.open_time,
     closeTime: row.close_time,
@@ -39,16 +39,20 @@ export function toStore(row: StoreRow): Store {
 }
 
 /**
- * account は join 済みの行を受け取る。
- * 取得できなかった場合は id だけ埋めた最小の Account を返す。
+ * account/store は join 済みの行を受け取る。
+ * account が取得できなかった場合は id だけ埋めた最小の Account を返す。
  */
-export function toTicket(row: TicketRow, account: AccountRow | null): Ticket {
+export function toTicket(
+  row: TicketRow,
+  account: AccountRow | null,
+  store: StoreRow
+): Ticket {
   return {
     id: row.id,
     account: account
       ? toAccount(account)
       : { id: row.account_id, phoneNumber: null },
-    storeID: row.store_id,
+    store: toStore(store),
     businessDate: row.business_date,
     waitingNumber: row.waiting_number,
     name: row.name,
@@ -56,6 +60,7 @@ export function toTicket(row: TicketRow, account: AccountRow | null): Ticket {
     status: row.status,
     createdAt: row.created_at,
     calledAt: row.called_at,
+    arrivedAt: row.arrived_at,
   };
 }
 

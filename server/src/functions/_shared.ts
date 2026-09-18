@@ -1,15 +1,15 @@
 /**
- * admin 関数の共通処理
+ * admin/guest 関数の共通処理
  *
  * 設計メモの方針で操作系はすべて `{ success: boolean }` を返し、失敗理由はボディに
  * 載せない。代わりにここでサーバログへ残す。原因が追えなくなるのを防ぐため、
  * 失敗を返すときは必ず fail() を通すこと。
  */
 
-import { supabaseAdmin } from "../../utils/supabase.js";
-import { markEvent, type EventKind } from "../../utils/store-events.js";
-import { validate, type ValidationResult } from "../../utils/validation.js";
-import type { SuccessResponse } from "../../types/api.js";
+import { supabaseAdmin } from "../utils/supabase.js";
+import { markEvent, type EventKind } from "../utils/store-events.js";
+import { validate, type ValidationResult } from "../utils/validation.js";
+import type { SuccessResponse } from "../types/api.js";
 import type { z } from "zod";
 
 export const OK: SuccessResponse = { success: true };

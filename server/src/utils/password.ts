@@ -1,7 +1,7 @@
 /**
  * パスワードのハッシュ化と検証
  *
- * accounts.password / staff_accounts.password は text だが、
+ * accounts.password / stores.password は text だが、
  * 平文を保存してはならない。追加依存を増やさないため Node 組み込みの
  * scrypt (RFC 7914) を使う。
  *

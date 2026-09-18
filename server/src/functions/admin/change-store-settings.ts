@@ -16,7 +16,7 @@ import {
   changeOpenTimeSchema,
   changeStoreStateSchema,
 } from "../../utils/validation.js";
-import { prepare, updateStoreField } from "./_shared.js";
+import { prepare, updateStoreField } from "../_shared.js";
 import type { SuccessResponse } from "../../types/api.js";
 
 export async function changeAvgMinutesPerParty(
