@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import {
   callNext,
   changeAvgMinutesPerParty,
   changeCloseTime,
   changeOpenTime,
   changeStoreState,
+  getTickets,
 } from "@/lib/admin-api";
 
 type SettingsForm = {
@@ -30,11 +32,41 @@ export default function SettingsPage() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [storeID, setStoreID] = useState("");
+  const [qrDataURL, setQrDataURL] = useState("");
 
   useEffect(() => {
-    try { setEmail(sessionStorage.getItem("magii-admin-email") || "owner@example.com"); }
-    catch { setEmail("owner@example.com"); }
+    try {
+      setEmail(sessionStorage.getItem("magii-admin-email") || "owner@example.com");
+    } catch {
+      setEmail("owner@example.com");
+    }
   }, []);
+
+  useEffect(() => {
+    if (!email) return;
+    void getTickets(email).then(({ tickets }) => {
+      if (tickets[0]?.store.id) setStoreID(tickets[0].store.id);
+    }).catch(() => setError("店舗IDを自動取得できませんでした。手動で入力してください"));
+  }, [email]);
+
+  useEffect(() => {
+    if (!storeID.trim()) {
+      setQrDataURL("");
+      return;
+    }
+    void QRCode.toDataURL(storeID.trim(), { width: 640, margin: 3, errorCorrectionLevel: "H", color: { dark: "#102a43", light: "#ffffff" } })
+      .then(setQrDataURL)
+      .catch(() => setError("QRコードを生成できませんでした"));
+  }, [storeID]);
+
+  const downloadQRCode = () => {
+    if (!qrDataURL) return;
+    const anchor = document.createElement("a");
+    anchor.href = qrDataURL;
+    anchor.download = `magii-airline-${storeID || "store"}-qr.png`;
+    anchor.click();
+  };
 
   const runChange = async (action: string, request: () => Promise<{ success: boolean; message?: string }>) => {
     setMessage("");
@@ -123,6 +155,20 @@ export default function SettingsPage() {
             <div className="status-options">
               <button type="button" disabled={!email || loadingAction !== null} className={form.status === "open" ? "status-option selected" : "status-option"} onClick={() => void updateStatus("open")}><span className="live-dot" /><b>受付中</b><small>新規チケットを受け付ける</small></button>
               <button type="button" disabled={!email || loadingAction !== null} className={form.status === "closed" ? "status-option selected closed" : "status-option closed"} onClick={() => void updateStatus("closed")}><span className="closed-dot" /><b>受付停止</b><small>新規受付を一時停止する</small></button>
+            </div>
+          </section>
+
+          <section className="settings-card qr-settings-card">
+            <div className="settings-card-heading"><span className="settings-icon">▦</span><div><h2>店舗QRコード</h2><p>来店客が待ちチケットを発行するためのQRコードです。</p></div></div>
+            <div className="qr-settings-grid">
+              <div className="qr-fields">
+                <label className="field-label">店舗ID<input className="input" value={storeID} onChange={(event) => setStoreID(event.target.value)} placeholder="店舗IDを入力" /></label>
+                {storeID && <div className="qr-url-preview"><b>QRに含まれる店舗ID</b><code>{storeID.trim()}</code></div>}
+              </div>
+              <div className="qr-preview">
+                {qrDataURL ? <img src={qrDataURL} alt={`店舗ID ${storeID} のQRコード`} /> : <div className="qr-placeholder">店舗IDを入力してください</div>}
+                <button type="button" onClick={downloadQRCode} disabled={!qrDataURL}>PNGでダウンロード</button>
+              </div>
             </div>
           </section>
 

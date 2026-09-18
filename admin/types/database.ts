@@ -136,11 +136,9 @@ export type Database = {
 };
 
 export type TicketStatus =
-  | "waiting"
-  | "called"
-  | "seated"
-  | "no_show"
-  | "cancelled";
+  | "Waiting"
+  | "Called"
+  | "Done";
 
 export type StaffRole = "owner" | "manager" | "staff";
 

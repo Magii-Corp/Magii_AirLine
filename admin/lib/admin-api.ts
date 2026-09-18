@@ -1,4 +1,4 @@
-export type TicketStatus = "waiting" | "called";
+export type TicketStatus = "Waiting" | "Called" | "Done";
 export type Account = { id: string; phone_number: string };
 export type Store = {
   id: string; email: string; name: string; openTime: string; closeTime: string;
@@ -22,9 +22,9 @@ const demoStore: Store = {
   counterDate: new Date().toISOString().slice(0, 10), lastNumber: 14, status: "open",
 };
 const demoTickets: AdminTicket[] = [
-  { id: "ticket-12", account: { id: "account-1", phone_number: "090-0000-0001" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 12, name: "山田 太郎", partySize: 2, status: "called", called_at: new Date().toISOString() },
-  { id: "ticket-13", account: { id: "account-2", phone_number: "090-0000-0002" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 13, name: "鈴木 花子", partySize: 4, status: "waiting", called_at: null },
-  { id: "ticket-14", account: { id: "account-3", phone_number: "090-0000-0003" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 14, name: "田中 一郎", partySize: 1, status: "waiting", called_at: null },
+  { id: "ticket-12", account: { id: "account-1", phone_number: "090-0000-0001" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 12, name: "山田 太郎", partySize: 2, status: "Waiting", called_at: new Date().toISOString() },
+  { id: "ticket-13", account: { id: "account-2", phone_number: "090-0000-0002" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 13, name: "鈴木 花子", partySize: 4, status: "Waiting", called_at: null },
+  { id: "ticket-14", account: { id: "account-3", phone_number: "090-0000-0003" }, store: demoStore, business_date: demoStore.counterDate, waitingNumber: 14, name: "田中 一郎", partySize: 1, status: "Waiting", called_at: null },
 ];
 
 // API接続時は、各関数の中身だけを fetch などに置き換えてください。
