@@ -176,7 +176,7 @@ export default function SettingsPage() {
           </section>
 
           <section className="settings-card">
-            <div className="settings-card-heading"><span className="settings-icon">◷</span><div><h2>営業時間</h2><p>お客様に表示する受付時間を設定します。</p></div></div>
+            <div className="settings-card-heading"><span className="settings-icon" aria-hidden="true" /><div><h2>営業時間</h2><p>お客様に表示する受付時間を設定します。</p></div></div>
             <div className="field-grid settings-fields">
               <label className="field-label">開店時間<input className="input" type="time" value={form.openTime} onChange={(e) => setForm({ ...form, openTime: e.target.value })} /></label>
               <label className="field-label">閉店時間<input className="input" type="time" value={form.closeTime} onChange={(e) => setForm({ ...form, closeTime: e.target.value })} /></label>
@@ -184,7 +184,7 @@ export default function SettingsPage() {
           </section>
 
           <section className="settings-card">
-            <div className="settings-card-heading"><span className="settings-icon">⌛</span><div><h2>待ち時間</h2><p>1組を案内するまでの平均時間です。</p></div></div>
+            <div className="settings-card-heading"><span className="settings-icon" aria-hidden="true" /><div><h2>待ち時間</h2><p>1組を案内するまでの平均時間です。</p></div></div>
             <label className="field-label number-field">1組あたりの平均待ち時間<div className="input-with-unit"><input className="input" type="number" min="1" max="120" value={form.avgMinutesPerParty} onChange={(e) => setForm({ ...form, avgMinutesPerParty: Number(e.target.value) })} /><span>分</span></div></label>
             <p className="field-help">待ち組数 × 平均待ち時間で、お客様の予想待ち時間を計算します。</p>
           </section>

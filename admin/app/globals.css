@@ -228,9 +228,8 @@ body .dashboard-console .dashboard-page-header h1 { margin:0; font-size:28px; fo
 body .dashboard-console .dashboard-page-header time { color:#52667a; font-size:18px; font-weight:800; }
 body .dashboard-console .dashboard-title-line { display:flex; align-items:center; gap:18px; }
 body .dashboard-console .dashboard-store-status { padding:6px 14px; border:2px solid #111; border-radius:999px; font-size:16px; font-weight:900; }
-body .dashboard-console .dashboard-store-status.open { color:#176b4a; background:#e4f5ec; }
-body .dashboard-console .dashboard-store-status.closed { color:#f8e5e5; background:#b83c35; }
-body .dashboard-console .dashboard-store-status.open { color:#fff; background:#3168c9; border-color:#111; }
+body .dashboard-console .dashboard-store-status.open { color:#174f91; background:#dbeafe; border-color:#4c89c3; }
+body .dashboard-console .dashboard-store-status.closed { color:#8b2e2e; background:#f8dede; border-color:#b83c35; }
 body .dashboard-console .db-metrics article strong small { margin-left:8px; color:#52667a; font-family:inherit; font-size:20px; font-weight:900; }
 body .dashboard-console .call-workspace { flex:1; height:auto; min-height:0; }
 body .dashboard-console .call-workspace .primary-call-area .db-call-button { min-height:0; }
@@ -344,8 +343,16 @@ body .admin-console .console-nav a.active { color:#fff; border-color:#4cc38a; ba
 body .admin-console .console-nav a:hover { color:#fff; background:#3168c9; border-color:#3168c9; }
 body .admin-console .console-nav a.active { color:#fff; background:#3168c9; border-color:#3168c9; }
 body .admin-console button:hover:not(:disabled) { color:#fff; background:#3168c9; border-color:#111; }
-body .console-settings .status-option.selected { color:#fff; background:#3168c9; border-color:#111; box-shadow:none; }
-body .console-settings .status-option.selected.closed { color:#fff; background:#b83c35; border-color:#111; }
+body .console-settings .status-option.selected { color:#174f91; background:#dbeafe; border-color:#4c89c3; box-shadow:none; }
+body .console-settings .status-option.selected.closed { color:#8b2e2e; background:#f8dede; border-color:#b83c35; }
+body .console-settings .status-option.selected:hover:not(:disabled) { color:#174f91; background:#dbeafe; border-color:#4c89c3; }
+body .console-settings .status-option.selected.closed:hover:not(:disabled) { color:#8b2e2e; background:#f8dede; border-color:#b83c35; }
+body .console-settings .status-option .live-dot { background:#3168c9; box-shadow:0 0 0 4px #dbeafe; }
+body .console-settings .status-option .closed-dot { background:#b83c35; box-shadow:0 0 0 4px #f8dede; }
+body .console-settings .status-option.selected b,
+body .console-settings .status-option.selected small { color:#174f91; }
+body .console-settings .status-option.selected.closed b,
+body .console-settings .status-option.selected.closed small { color:#8b2e2e; }
 body .admin-console .console-nav a span { width:26px; font-size:22px; }
 body .admin-console .sidebar-account { min-height:92px; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; padding-top:24px; }
 body .admin-console .sidebar-account .account-avatar { width:44px; height:44px; font-size:16px; }
