@@ -153,11 +153,11 @@ export default function SettingsPage() {
       <aside className="console-sidebar settings-sidebar">
         <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
-          <Link href="/dashboard"><span>▦</span>ダッシュボード</Link>
-          <Link href="/tickets"><span>▤</span>受付一覧</Link>
-          <Link href="/settings" className="active"><span>⚙</span>店舗設定</Link>
+          <Link href="/dashboard">ダッシュボード</Link>
+          <Link href="/tickets">受付一覧</Link>
+          <Link href="/settings" className="active">店舗設定</Link>
         </nav>
-        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
+        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link className="sidebar-logout" href="/auth/login" aria-label="ログアウト">↗</Link></div>
       </aside>
       <div className="console-main">
         <div className="settings-content console-settings">
@@ -198,7 +198,7 @@ export default function SettingsPage() {
           </section>
 
           <section className="settings-card qr-settings-card">
-            <div className="settings-card-heading"><span className="settings-icon">▦</span><div><h2>店舗QRコード</h2><p>来店客が受付を発行するためのQRコードです。</p></div></div>
+            <div className="settings-card-heading"><span className="settings-icon" aria-hidden="true" /><div><h2>店舗QRコード</h2><p>来店客が受付を発行するためのQRコードです。</p></div></div>
             <div className="qr-settings-grid">
               <div className="qr-fields">
                 <label className="field-label">店舗ID<input className="input" value={storeID} onChange={(event) => setStoreID(event.target.value)} placeholder="店舗IDを入力" /></label>
@@ -214,7 +214,7 @@ export default function SettingsPage() {
           <div className="settings-save-bar"><div><b>設定をまとめて保存</b><span>店舗名、営業時間、待ち時間、受付状態を一括更新します。</span></div><button type="button" onClick={() => void saveSettings()} disabled={!email || loadingAction !== null}>{loadingAction === "settings" ? "保存中…" : "設定を保存"}</button></div>
 
           {error && <p className="form-error settings-message error" role="alert">{error}</p>}
-          {message && <p className="settings-message success" role="status">✓ {message}</p>}
+          {message && <p className="settings-message success" role="status">{message}</p>}
         </div>
         </div>
       </div>

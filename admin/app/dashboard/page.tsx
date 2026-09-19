@@ -115,11 +115,11 @@ export default function DashboardPage() {
       <aside className="console-sidebar">
         <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
-          <Link href="/dashboard" className="active"><span>▦</span>ダッシュボード</Link>
-          <Link href="/tickets"><span>▤</span>受付一覧</Link>
-          <Link href="/settings"><span>⚙</span>店舗設定</Link>
+          <Link href="/dashboard" className="active">ダッシュボード</Link>
+          <Link href="/tickets">受付一覧</Link>
+          <Link href="/settings">店舗設定</Link>
         </nav>
-        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
+        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link className="sidebar-logout" href="/auth/login" aria-label="ログアウト">↗</Link></div>
       </aside>
 
       <div className="console-main">
