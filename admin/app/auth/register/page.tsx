@@ -48,7 +48,7 @@ export default function RegisterPage() {
       <section className="auth-panel">
         <Link href="/auth/login" className="back-link">← ログインへ戻る</Link>
         <div className="brand-mark" aria-hidden="true">M</div>
-        <p className="eyebrow">GET STARTED</p>
+        <p className="eyebrow">新規店舗登録</p>
         <h1 className="auth-title">店舗アカウントを作成</h1>
         <p className="auth-copy">待ち時間を、もっと心地よい時間へ。</p>
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
