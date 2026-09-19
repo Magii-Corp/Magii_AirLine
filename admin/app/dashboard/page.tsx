@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AdminTicket, callNext, changeTicketState, getTickets, TicketStatus } from "@/lib/admin-api";
+import { AdminTicket, callNext, changeTicketState, getDashboard, subscribeTicketUpdates, TicketStatus } from "@/lib/admin-api";
 
 const CALLED_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -17,7 +17,8 @@ export default function DashboardPage() {
   const loadTickets = useCallback(async () => {
     if (!email) return;
     try {
-      const result = await getTickets(email);
+      const result = await getDashboard(email);
+      setNow(new Date(result.serverTime).getTime());
       setTickets(result.tickets);
     } catch {
       setError("チケットを取得できませんでした");
@@ -31,48 +32,45 @@ export default function DashboardPage() {
     catch { setEmail("owner@example.com"); }
   }, []);
   useEffect(() => { void loadTickets(); }, [loadTickets]);
-  const waitingCount = useMemo(() => tickets.filter((ticket) => ticket.status === "Waiting").length, [tickets]);
-  const calledCount = useMemo(() => tickets.filter((ticket) => ticket.status === "Called").length, [tickets]);
-  const doneCount = useMemo(() => tickets.filter((ticket) => ticket.status === "Done").length, [tickets]);
-  const nextTicket = useMemo(() => tickets.find((ticket) => ticket.status === "Waiting") ?? null, [tickets]);
-  const calledTicket = useMemo(() => tickets.find((ticket) => ticket.status === "Called") ?? null, [tickets]);
-  const remainingSeconds = calledTicket?.called_at
-    ? Math.max(0, Math.ceil((new Date(calledTicket.called_at).getTime() + CALLED_TIMEOUT_MS - now) / 1000))
-    : 0;
-  const remainingLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+  useEffect(() => {
+    if (!email) return;
+    return subscribeTicketUpdates(email, ({ ticket, serverTime }) => {
+      setNow(new Date(serverTime).getTime());
+      setTickets((current) => {
+        const exists = current.some((currentTicket) => currentTicket.id === ticket.id);
+        return exists
+          ? current.map((currentTicket) => currentTicket.id === ticket.id ? ticket : currentTicket)
+          : [...current, ticket];
+      });
+    });
+  }, [email]);
+  const waitingCount = useMemo(() => tickets.filter((ticket) => ticket.status === "waiting").length, [tickets]);
+  const calledCount = useMemo(() => tickets.filter((ticket) => ticket.status === "called").length, [tickets]);
+  const doneCount = useMemo(() => tickets.filter((ticket) => ticket.status === "done").length, [tickets]);
+  const nextTicket = useMemo(() => tickets.find((ticket) => ticket.status === "waiting") ?? null, [tickets]);
+  const calledTickets = useMemo(() => tickets.filter((ticket) => ticket.status === "called"), [tickets]);
+  const calledPeople = useMemo(() => calledTickets.reduce((total, ticket) => total + ticket.partySize, 0), [calledTickets]);
+  const nextPartySize = nextTicket?.partySize ?? 0;
+  const canCallNext = waitingCount > 0 && actionID === null;
+  const getRemainingSeconds = useCallback((ticket: AdminTicket) => ticket.called_at
+    ? Math.max(0, Math.ceil((new Date(ticket.called_at).getTime() + CALLED_TIMEOUT_MS - now) / 1000))
+    : 0, [now]);
+  const formatRemaining = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const statusLabels: Record<TicketStatus, string> = {
+    waiting: "待機中",
+    called: "呼び出し中",
+    done: "完了",
+    cancelled: "キャンセル",
+  };
 
   useEffect(() => {
-    if (!calledTicket) return;
+    if (!calledTickets.length) return;
     setNow(Date.now());
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [calledTicket]);
-
-  useEffect(() => {
-    if (!calledTicket?.called_at) return;
-    const remaining = new Date(calledTicket.called_at).getTime() + CALLED_TIMEOUT_MS - Date.now();
-    const finishCalledTicket = async () => {
-      try {
-        const result = await changeTicketState(calledTicket.id, "Done");
-        if (!result.success) throw new Error(result.message);
-        setTickets((current) => current.map((ticket) => ticket.id === calledTicket.id ? { ...ticket, status: "Done" } : ticket));
-      } catch (error) {
-        setError(error instanceof Error && error.message ? error.message : "15分経過したチケットを完了にできませんでした");
-      }
-    };
-    if (remaining <= 0) {
-      void finishCalledTicket();
-      return;
-    }
-    const timer = window.setTimeout(() => void finishCalledTicket(), remaining);
-    return () => window.clearTimeout(timer);
-  }, [calledTicket]);
+  }, [calledTickets.length]);
 
   const updateStatus = async (ticketID: string, newState: TicketStatus) => {
-    if (newState === "Called" && calledTicket && calledTicket.id !== ticketID) {
-      setError(`${calledTicket.waitingNumber}番のお客様を先に完了してください`);
-      return;
-    }
     setActionID(ticketID);
     setError("");
     try {
@@ -81,7 +79,7 @@ export default function DashboardPage() {
       setTickets((current) => current.map((ticket) => ticket.id === ticketID ? {
         ...ticket,
         status: newState,
-        called_at: newState === "Called" ? (ticket.called_at ?? new Date().toISOString()) : null,
+        called_at: newState === "called" ? (ticket.called_at ?? new Date().toISOString()) : ticket.called_at,
       } : ticket));
     } catch (error) {
       setError(error instanceof Error && error.message ? error.message : "ステータスを変更できませんでした");
@@ -91,14 +89,14 @@ export default function DashboardPage() {
   };
 
   const handleCallNext = async () => {
-    const next = tickets.find((ticket) => ticket.status === "Waiting");
-    if (!next || calledTicket) return;
+    const next = tickets.find((ticket) => ticket.status === "waiting");
+    if (!next) return;
     setActionID("call-next");
     setError("");
     try {
       const result = await callNext(email);
       if (!result.success) throw new Error(result.message);
-      setTickets((current) => current.map((ticket) => ticket.id === next.id ? { ...ticket, status: "Called", called_at: new Date().toISOString() } : ticket));
+      setTickets((current) => current.map((ticket) => ticket.id === next.id ? { ...ticket, status: "called", called_at: new Date().toISOString() } : ticket));
     } catch (error) {
       setError(error instanceof Error && error.message ? error.message : "次のお客様を呼び出せませんでした");
     } finally {
@@ -109,12 +107,12 @@ export default function DashboardPage() {
   return (
     <main className="admin-console dashboard-console">
       <aside className="console-sidebar">
-        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii</b><span>AirLine Admin</span></div></div>
+        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
           <Link href="/dashboard" className="active"><span>▦</span>ダッシュボード</Link>
           <Link href="/settings"><span>⚙</span>店舗設定</Link>
         </nav>
-        <button className="sidebar-call-button" onClick={handleCallNext} disabled={waitingCount === 0 || calledTicket !== null || actionID !== null}><span>▶</span><b>{actionID === "call-next" ? "呼出中…" : calledTicket ? "案内待ち" : "次を呼ぶ"}</b>{calledTicket && <small className="call-countdown">残り {remainingLabel}</small>}</button>
+        <button className="sidebar-call-button" onClick={handleCallNext} disabled={!canCallNext}><b>{actionID === "call-next" ? "呼出中…" : waitingCount === 0 ? "待機なし" : "次を呼ぶ"}</b>{calledCount > 0 && <small className="call-countdown">{calledCount}組呼出中</small>}</button>
         <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
       </aside>
 
@@ -122,13 +120,13 @@ export default function DashboardPage() {
         <div className="console-body">
           <section className="call-workspace">
             <section className="db-metrics">
-              <article><div><span>WAITING</span><small>待機中</small></div><strong>{waitingCount}</strong><em className="metric-dot amber" /></article>
-              <article><div><span>CALLED</span><small>呼び出し中</small></div><strong>{calledCount}</strong><em className="metric-dot green" /></article>
-              <article><div><span>DONE</span><small>完了</small></div><strong>{doneCount}</strong><em className="metric-dot blue" /></article>
+              <article><div><span>待機状況</span><small>待機中</small></div><strong>{waitingCount}</strong><em className="metric-dot amber" /></article>
+              <article><div><span>呼び出し状況</span><small>呼び出し中</small></div><strong>{calledCount}</strong><em className="metric-dot green" /></article>
+              <article><div><span>本日の完了</span><small>完了</small></div><strong>{doneCount}</strong><em className="metric-dot blue" /></article>
             </section>
 
             <section className="next-customer-panel" aria-label="次に呼ばれるお客様">
-              <div className="next-customer-label"><span>▶</span><div><small>UP NEXT</small><b>次に呼ばれるお客様</b></div></div>
+              <div className="next-customer-label"><span>▶</span><div><small>次のお客様</small><b>次に呼ばれるお客様</b></div></div>
               {nextTicket ? (
                 <div className="next-customer-data">
                   <span className="next-number">{nextTicket.waitingNumber}</span>
@@ -140,12 +138,21 @@ export default function DashboardPage() {
             </section>
 
             <div className="primary-call-area">
-              <button className="db-call-button" onClick={handleCallNext} disabled={waitingCount === 0 || calledTicket !== null || actionID !== null}><span>▶</span><div><small>{calledTicket ? `${calledTicket.waitingNumber}番を案内中` : "NEXT ACTION"}</small><b>{actionID === "call-next" ? "呼び出し中…" : calledTicket ? `残り ${remainingLabel}` : "次を呼ぶ"}</b>{calledTicket && <em className="countdown-note">15分経過後に自動で完了します</em>}</div></button>
+              <button className="db-call-button" onClick={handleCallNext} disabled={!canCallNext}><div><small>{nextTicket ? `次は${nextPartySize}名様` : "次のお客様はいません"}</small><b>{actionID === "call-next" ? "呼び出し中…" : nextTicket ? "次を呼ぶ" : "待機中なし"}</b>{calledCount > 0 && <em className="countdown-note">{calledCount}組呼び出し中</em>}</div></button>
             </div>
           </section>
 
+          <section className="active-customer-screen called-customer-screen">
+            <article className="active-list called-list">
+              <header><div><span className="active-list-dot called" /><h2>現在呼び出し中のお客様</h2></div><strong>{calledPeople}名・{calledCount}組</strong></header>
+              <div className="active-list-body">
+                {calledTickets.length ? calledTickets.map((ticket) => <div className="active-customer-row" key={ticket.id}><span className="active-number">{ticket.waitingNumber}</span><b>{ticket.name}</b><span>{ticket.partySize}名様</span><strong>{formatRemaining(getRemainingSeconds(ticket))}</strong><button onClick={() => void updateStatus(ticket.id, "done")} disabled={actionID !== null}>到着</button></div>) : <p>現在呼び出し中のお客様はいません</p>}
+              </div>
+            </article>
+          </section>
+
           <section className="db-panel">
-            <div className="db-panel-header"><div><h2>Tickets</h2><p>現在の待ちチケットを管理</p></div><div className="table-meta"><span>{tickets.length} records</span><button onClick={() => void loadTickets()}>↻ Refresh</button></div></div>
+            <div className="db-panel-header"><div><h2>チケット一覧</h2><p>現在の待ちチケットを管理</p></div><div className="table-meta"><span>{tickets.length}件</span><button onClick={() => void loadTickets()}>↻ 更新</button></div></div>
             {error && <p className="form-error queue-error" role="alert">{error}</p>}
             {loading ? <div className="empty-state">データを読み込んでいます…</div> : tickets.length === 0 ? <div className="empty-state"><span>✓</span><b>対象データはありません</b></div> : (
               <div className="db-table-wrap">
@@ -159,15 +166,15 @@ export default function DashboardPage() {
                         <td><b>{ticket.partySize}</b><small className="unit-label">名</small></td>
                         <td className="mono-cell">{ticket.account.phone_number}</td>
                         <td className="mono-cell">{ticket.business_date}</td>
-                        <td><span className={`db-status ${ticket.status.toLowerCase()}`}><i />{ticket.status.toUpperCase()}</span></td>
-                        <td><select className="db-select" value={ticket.status} disabled={actionID !== null} onChange={(event) => void updateStatus(ticket.id, event.target.value as TicketStatus)} aria-label={`${ticket.waitingNumber}番のステータス`}><option value="Waiting">待機中</option><option value="Called">呼び出し中</option><option value="Done">完了</option></select></td>
+                        <td><span className={`db-status ${ticket.status}`}><i />{statusLabels[ticket.status]}{ticket.status === "called" && <strong className="ticket-countdown"> {formatRemaining(getRemainingSeconds(ticket))}</strong>}</span></td>
+                        <td><select className="db-select" value={ticket.status} disabled={actionID !== null} onChange={(event) => void updateStatus(ticket.id, event.target.value as TicketStatus)} aria-label={`${ticket.waitingNumber}番のステータス`}><option value="waiting">待機中</option><option value="called">呼び出し中</option><option value="done">完了</option><option value="cancelled">キャンセル</option></select></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-            <footer className="db-panel-footer"><span>Last synced: just now</span><span>Showing {tickets.length} of {tickets.length}</span></footer>
+            <footer className="db-panel-footer"><span>最終更新：たった今</span><span>全{tickets.length}件を表示中</span></footer>
           </section>
         </div>
       </div>
