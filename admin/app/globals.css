@@ -107,7 +107,8 @@ body .countdown-note { display:block; margin-top:10px; color:#dbeafe; font-size:
 /* 認証・設定画面も管理コンソールと同じ視覚言語に統一 */
 body .auth-shell { background:#f7f8fa; }
 body .auth-panel { color:#102a43; background:#fff; border:3px solid #111; border-radius:10px; box-shadow:6px 6px 0 #111; }
-body .auth-panel .brand-mark { background:#102a43; border:2px solid #111; border-radius:8px; box-shadow:none; }
+body .auth-panel .brand-mark { background:#3168c9; border:2px solid #111; border-radius:8px; box-shadow:none; font-family:Inter,"Noto Sans JP",system-ui,sans-serif; font-style:normal; }
+body .brand-mark { background:#3168c9; color:#fff; font-family:Inter,"Noto Sans JP",system-ui,sans-serif; font-style:normal; }
 body .auth-panel .eyebrow { color:#0b63ce; font-size:12px; }
 body .auth-title { color:#102a43; font-family:Inter,"Noto Sans JP",system-ui,sans-serif; font-size:34px; font-weight:900; }
 body .auth-copy { color:#52667a; font-size:15px; }
@@ -218,6 +219,166 @@ body .dashboard-console .call-workspace .next-customer-panel { flex:none; margin
 body .dashboard-console .call-workspace .primary-call-area { flex:1; min-height:0; margin:0; }
 body .dashboard-console .call-workspace .db-call-button { min-height:100%; }
 body .dashboard-console .db-panel { min-height:calc(100vh - 20px); margin:10px 0; scroll-snap-align:start; scroll-snap-stop:always; }
+body .dashboard-console .console-main { overflow:hidden; }
+body .dashboard-console .console-body { height:100vh; overflow:hidden; }
+body .dashboard-console .console-body { display:flex; flex-direction:column; }
+body .dashboard-console .dashboard-page-header { flex:none; display:flex; align-items:baseline; justify-content:space-between; min-height:58px; padding:10px 4px 8px; color:#102a43; }
+body .dashboard-console .dashboard-page-header h1 { margin:0; font-size:28px; font-weight:900; }
+body .dashboard-console .dashboard-page-header time { color:#52667a; font-size:18px; font-weight:800; }
+body .dashboard-console .dashboard-title-line { display:flex; align-items:center; gap:18px; }
+body .dashboard-console .dashboard-store-status { padding:6px 14px; border:2px solid #111; border-radius:999px; font-size:16px; font-weight:900; }
+body .dashboard-console .dashboard-store-status.open { color:#176b4a; background:#e4f5ec; }
+body .dashboard-console .dashboard-store-status.closed { color:#8b2e2e; background:#f8e5e5; }
+body .dashboard-console .db-metrics article strong small { margin-left:8px; color:#52667a; font-family:inherit; font-size:20px; font-weight:900; }
+body .dashboard-console .call-workspace { flex:1; height:auto; min-height:0; }
+body .dashboard-console .call-workspace .primary-call-area .db-call-button { min-height:0; }
+body .dashboard-console .call-workspace .next-customer-panel { grid-column:1 / -1; min-height:116px; margin:0; }
+body .dashboard-console .call-workspace .primary-call-area { grid-column:1; grid-row:3; }
+body .dashboard-console .call-workspace .called-customer-screen { grid-column:2; grid-row:3; }
+body .dashboard-console .call-workspace .called-list .active-customer-row { min-height:142px; }
+body .dashboard-console .call-workspace .active-customer-info b { font-size:30px; }
+@media (min-width:901px) {
+  body .dashboard-console .call-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(470px,1.3fr); grid-template-rows:auto auto minmax(0,1fr); align-items:stretch; }
+  body .dashboard-console .call-workspace .db-metrics,
+  body .dashboard-console .call-workspace .next-customer-panel { grid-column:1 / -1; }
+  body .dashboard-console .call-workspace .primary-call-area { min-height:0; }
+  body .dashboard-console .call-workspace .called-customer-screen { min-height:0; height:100%; padding:0 0 0 8px; }
+  body .dashboard-console .call-workspace .called-customer-screen .active-list { height:100%; }
+  body .dashboard-console .call-workspace .called-list .active-customer-row { min-width:0; min-height:150px; grid-template-columns:58px minmax(150px,1fr) 180px; gap:12px; padding:14px 12px; }
+  body .dashboard-console .call-workspace .active-customer-info b { font-size:32px; }
+  body .dashboard-console .call-workspace .called-list .active-customer-row button { width:180px; min-height:82px; padding:0 10px; font-size:28px; }
+}
+
+/* チケット一覧・設定画面もダッシュボードと同じ視認性に揃える */
+body .ticket-console .console-nav a,
+body .console-settings .console-nav a { font-size:17px; }
+body .ticket-console .db-panel-header h1 { font-size:32px; }
+body .ticket-console .db-panel-header p { font-size:17px; }
+body .ticket-console .table-meta span,
+body .ticket-console .table-meta button { font-size:16px; }
+body .ticket-console .db-table th { font-size:16px; }
+body .ticket-console .db-table td,
+body .ticket-console .customer-cell b,
+body .ticket-console .mono-cell { font-size:18px !important; }
+body .ticket-console .db-table td { height:92px; padding:14px 16px; }
+body .ticket-console .db-table th { padding:15px 16px; }
+body .ticket-console .waiting-number-badge { width:56px; height:48px; font-size:24px; }
+body .ticket-console .customer-cell > span { width:38px; height:38px; font-size:16px; }
+body .ticket-console .db-status,
+body .ticket-console .db-select { font-size:17px; }
+body .ticket-console .db-select { min-height:58px; padding:0 14px; }
+body .ticket-console .db-panel-footer { font-size:15px; }
+body .ticket-console .db-table-wrap { overflow:hidden; }
+body .ticket-console .db-table { display:block; min-width:0; }
+body .ticket-console .db-table thead,
+body .ticket-console .db-table tbody { display:block; }
+body .ticket-console .db-table thead tr,
+body .ticket-console .db-table tbody tr { display:grid; grid-template-columns:90px minmax(150px,1fr) 90px 180px 140px 180px; align-items:center; }
+body .ticket-console .db-table tbody { max-height:calc(100vh - 270px); overflow-y:auto; }
+body .ticket-console .db-table th,
+body .ticket-console .db-table td { min-width:0; }
+body .console-settings .settings-heading h1 { font-size:32px; }
+body .console-settings .settings-heading > p:last-child { font-size:17px; }
+body .console-settings .settings-card-heading h2 { font-size:24px; }
+body .console-settings .settings-card-heading p,
+body .console-settings .field-help { font-size:16px; }
+body .console-settings .field-label { font-size:18px; }
+body .console-settings .input { min-height:56px; font-size:18px; }
+body .console-settings .status-option b { font-size:18px; }
+body .console-settings .status-option small { font-size:14px; }
+body .settings-save-bar b { font-size:21px; }
+body .settings-save-bar span { font-size:16px; }
+@media (max-width:900px) { body .dashboard-console .call-workspace .called-customer-screen { display:none; } }
+body .ticket-page-body { height:100vh; padding:24px 30px 32px; overflow:auto; }
+body .ticket-page-body .db-panel { min-height:0; }
+body .ticket-page-body .db-panel-header h1 { margin:0; color:#102a43; font-size:28px; }
+body .admin-console button { box-shadow:none !important; }
+body .dashboard-console .active-customer-info { min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+body .dashboard-console .active-customer-info b { overflow:hidden; max-width:100%; text-overflow:ellipsis; white-space:nowrap; }
+body .dashboard-console .active-customer-info > div { display:flex; align-items:center; gap:14px; white-space:nowrap; }
+body .dashboard-console .active-customer-info span { font-size:20px; }
+body .dashboard-console .active-customer-info small { color:#52667a; font-size:18px; font-weight:800; }
+body .dashboard-console .active-list-columns { display:grid; grid-template-columns:58px minmax(0,1fr) 240px; gap:12px; padding:9px 12px; color:#52667a; background:#f7f9fc; border-bottom:1px solid #111; font-size:15px; font-weight:800; }
+body .dashboard-console .active-list-columns span:last-child { text-align:center; }
+body .next-number,
+body .active-number,
+body .waiting-number-badge { margin-left:6px; }
+body .console-nav { gap:10px; }
+body .console-nav a { min-height:76px; padding:18px 12px; border:2px solid #33463d; border-radius:9px; }
+body .console-nav a.active { border-color:#4cc38a; }
+body .sidebar-account { min-height:76px; padding-top:20px; }
+@media (max-width:600px) { body .console-nav a { min-height:44px; padding:8px 10px; } }
+/* 小型スマホ向けの折りたたみを使わず、操作用サイドバーを優先 */
+body .admin-console { grid-template-columns:270px minmax(0,1fr); }
+body .console-sidebar { position:sticky; top:0; height:100vh; padding:28px 18px; }
+body .console-logo { padding:0 10px 28px; }
+body .console-nav { gap:14px; padding-top:24px; }
+body .console-nav a { min-height:92px; padding:22px 16px; gap:14px; font-size:21px; border-width:3px; }
+body .console-nav a span { width:26px; font-size:22px; }
+body .console-nav a.active { font-size:21px; }
+body .sidebar-account { min-height:92px; padding-top:24px; }
+body .sidebar-account { grid-template-columns:44px minmax(0,1fr) auto; gap:12px; }
+body .sidebar-account .account-avatar { width:44px; height:44px; font-size:16px; }
+body .sidebar-account b { font-size:19px; }
+body .sidebar-account small { max-width:170px; font-size:14px; }
+@media (max-width:600px) {
+  body .admin-console { display:grid; padding-bottom:0; }
+  body .console-sidebar { position:sticky; top:0; left:auto; width:auto; height:100vh; padding:28px 18px; border-top:0; border-right:1px solid #29352f; }
+  body .console-logo, body .sidebar-account { display:flex; }
+  body .console-logo { justify-content:flex-start; }
+  body .console-nav { display:grid; width:auto; grid-template-columns:1fr; padding:24px 0 0; }
+  body .console-nav a, body .console-nav a.active, body .console-nav a:not(.active) { justify-content:flex-start; min-height:76px; padding:18px 14px; font-size:17px; }
+  body .console-nav a span { font-size:20px; }
+  body .sidebar-account > div, body .sidebar-account > a { display:block; }
+  body .sidebar-account { display:grid; }
+}
+
+/* 全管理画面で共通のサイドバー・受付一覧サイズ */
+body .admin-console .console-nav { display:grid; grid-template-columns:1fr; gap:14px; padding-top:24px; }
+body .admin-console .console-nav a,
+body .admin-console .console-nav a.active,
+body .admin-console .console-nav a:not(.active) { min-height:92px; padding:22px 16px; gap:14px; color:#8fa198; font-size:21px; border:3px solid #33463d; border-radius:9px; }
+body .admin-console .console-nav a.active { color:#fff; border-color:#4cc38a; background:#1d3028; }
+body .admin-console .console-nav a span { width:26px; font-size:22px; }
+body .admin-console .sidebar-account { min-height:92px; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; padding-top:24px; }
+body .admin-console .sidebar-account .account-avatar { width:44px; height:44px; font-size:16px; }
+body .admin-console .sidebar-account b { font-size:19px; }
+body .admin-console .sidebar-account small { max-width:170px; font-size:14px; }
+body .ticket-console .db-table th { font-size:17px; }
+body .ticket-console .db-table td,
+body .ticket-console .customer-cell b,
+body .ticket-console .mono-cell { font-size:19px !important; }
+body .ticket-console .db-table td { vertical-align:middle; }
+body .ticket-console .db-table td { display:flex; align-items:center; }
+body .ticket-console .customer-cell { min-height:58px; align-items:center; }
+body .ticket-console .customer-cell > span { display:none; }
+body .ticket-console .customer-cell b,
+body .ticket-console .mono-cell { font-size:22px !important; }
+body .ticket-console .db-table td:nth-child(3) b { font-size:25px !important; line-height:1; }
+body .ticket-console .db-table td:nth-child(3) .unit-label { margin-left:5px; font-size:18px !important; font-weight:900; }
+body .ticket-console .db-status,
+body .ticket-console .db-select { font-size:19px; }
+body .ticket-console .db-status { white-space:nowrap; }
+body .ticket-console .db-select { width:100%; white-space:nowrap; }
+body .ticket-console .db-table th:nth-child(6),
+body .ticket-console .db-table td:nth-child(6) { display:none; }
+body .ticket-console .db-table th:nth-child(7) { text-align:center; font-size:0; }
+body .ticket-console .db-table th:nth-child(7)::after { content:"状態／変更"; font-size:17px; }
+body .ticket-console .db-table td:nth-child(7) .db-select { color:#102a43; background:#eef3f8; border:2px solid #111; border-radius:7px; font-weight:900; text-align:center; }
+body .ticket-console .db-table td:nth-child(7) .db-select:has(option[value="waiting"]:checked) { color:#7b5700; background:#fff2c9; border-color:#d19a00; }
+body .ticket-console .db-table td:nth-child(7) .db-select:has(option[value="called"]:checked) { color:#176b4a; background:#dff5e8; border-color:#35a86e; }
+body .ticket-console .db-table td:nth-child(7) .db-select:has(option[value="done"]:checked) { color:#174f91; background:#e3efff; border-color:#4c89c3; }
+body .ticket-console .db-table td:nth-child(7) .db-select:has(option[value="cancelled"]:checked) { color:#8b2e2e; background:#f8e5e5; border-color:#b83c35; }
+@media (max-width:600px) {
+  body .admin-console { display:grid; grid-template-columns:270px minmax(0,1fr); padding-bottom:0; }
+  body .admin-console .console-sidebar { position:sticky; top:0; width:auto; height:100vh; padding:28px 18px; border-top:0; border-right:1px solid #29352f; }
+  body .admin-console .console-logo,
+  body .admin-console .sidebar-account { display:flex; }
+  body .admin-console .sidebar-account { display:grid; }
+  body .admin-console .console-nav a,
+  body .admin-console .console-nav a.active,
+  body .admin-console .console-nav a:not(.active) { min-height:76px; padding:18px 14px; font-size:17px; }
+}
 body .active-customer-lists { min-height:100vh; display:grid; grid-template-columns:1fr 1fr; align-content:start; gap:10px; padding:10px 0; scroll-snap-align:start; scroll-snap-stop:always; }
 body .active-list { overflow:hidden; color:#102a43; background:#fff; border:3px solid #111; border-radius:9px; }
 body .active-list > header { min-height:76px; display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:#eef3f8; border-bottom:2px solid #111; }
@@ -286,6 +447,39 @@ body .dashboard-console .db-select { font-size:17px; }
   body .dashboard-console .next-phone { font-size:22px; }
   body .dashboard-console .primary-call-area .db-call-button small { font-size:36px; }
   body .dashboard-console .countdown-note { font-size:30px; }
+}
+
+/* 参考画像の呼び出し画面レイアウト */
+@media (min-width:901px) {
+  body .dashboard-console .call-workspace { display:grid; grid-template-columns:minmax(430px,1fr) minmax(500px,1fr); grid-template-rows:auto 132px minmax(0,1fr); gap:14px; height:auto; flex:1; min-height:0; padding:10px 0; }
+  body .dashboard-console .call-workspace { height:auto; }
+  body .dashboard-console .call-workspace .db-metrics { grid-column:1 / -1; grid-row:1; min-height:124px; margin:0; }
+  body .dashboard-console .call-workspace .db-metrics > article { min-height:124px; }
+  body .dashboard-console .call-workspace .next-customer-panel { grid-column:1; grid-row:2; min-height:0; height:100%; min-width:0; margin:0; padding:8px 10px; overflow:hidden; border:2px solid #111; border-radius:9px; color:#102a43; background:#fff; }
+  body .dashboard-console .call-workspace .next-customer-data { display:grid; grid-template-columns:56px minmax(0,1fr) 145px; align-items:center; gap:18px; width:100%; min-width:0 !important; padding:0; border:0 !important; border-left:0 !important; }
+  body .dashboard-console .call-workspace .next-number { width:56px; height:64px; display:grid; place-items:center; color:#fff; background:#102a43; border:2px solid #111; border-radius:6px; font-size:24px; font-weight:900; }
+  body .dashboard-console .call-workspace .next-customer-main { min-width:0; overflow:hidden; }
+  body .dashboard-console .call-workspace .next-customer-main small { display:block; color:#52667a; font-size:14px; font-weight:500; }
+  body .dashboard-console .call-workspace .next-name { display:block; overflow:hidden; color:#102a43; font-size:29px; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
+  body .dashboard-console .call-workspace .next-customer-meta { display:flex; flex-direction:column; align-items:flex-end; gap:3px; border:0; border-left:0; }
+  body .dashboard-console .call-workspace .next-party { color:#102a43; font-size:22px; font-weight:900; }
+  body .dashboard-console .call-workspace .next-phone { display:block; max-width:none; overflow:visible; color:#102a43; font-size:20px; font-weight:900; white-space:nowrap; }
+  body .dashboard-console .call-workspace .next-party { padding:0 !important; border:0 !important; }
+  body .dashboard-console .call-workspace .primary-call-area { grid-column:1; grid-row:3; min-height:0; }
+  body .dashboard-console .call-workspace .primary-call-area .db-call-button { height:100%; min-height:0; border:2px solid #111; border-radius:9px; background:#3168c9; }
+  body .dashboard-console .call-workspace .primary-call-area .db-call-button small { font-size:25px; }
+  body .dashboard-console .call-workspace .primary-call-area .db-call-button b { font-size:68px; }
+  body .dashboard-console .call-workspace .called-customer-screen { grid-column:2; grid-row:2 / span 2; padding:0; }
+  body .dashboard-console .call-workspace .called-list { height:100%; border:2px solid #111; border-radius:9px; }
+  body .dashboard-console .call-workspace .called-list > header { min-height:76px; background:#fff; }
+  body .dashboard-console .call-workspace .called-list h2 { font-size:24px; }
+  body .dashboard-console .call-workspace .called-list > header > strong { color:#3168c9; font-size:18px; }
+  body .dashboard-console .call-workspace .called-list .active-customer-row { min-height:116px; grid-template-columns:58px minmax(105px,1fr) 240px; border-bottom:1px solid #d8dee8; }
+  body .dashboard-console .call-workspace .called-list .active-list-columns { grid-template-columns:58px minmax(105px,1fr) 240px; }
+  body .dashboard-console .call-workspace .called-list .active-customer-row button { width:240px; min-height:88px; font-size:30px; background:#3168c9; }
+  body .dashboard-console .call-workspace .active-customer-info b { font-size:29px; }
+  body .dashboard-console .call-workspace .active-customer-info span { font-size:18px; }
+  body .dashboard-console .call-workspace .active-customer-info small { font-size:17px; }
 }
 
 .auth-shell { min-height:100vh; display:grid; place-items:center; padding:36px 20px; background:radial-gradient(circle at 15% 15%,#dceee4 0,transparent 32%),radial-gradient(circle at 85% 85%,#f7e7d1 0,transparent 28%),var(--cream); }

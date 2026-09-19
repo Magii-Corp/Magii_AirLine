@@ -13,15 +13,17 @@ export default function DashboardPage() {
   const [actionID, setActionID] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [storeStatus, setStoreStatus] = useState("open");
 
   const loadTickets = useCallback(async () => {
     if (!email) return;
     try {
       const result = await getDashboard(email);
       setNow(new Date(result.serverTime).getTime());
+      setStoreStatus(result.store.status);
       setTickets(result.tickets);
     } catch {
-      setError("チケットを取得できませんでした");
+      setError("受付を取得できませんでした");
     } finally {
       setLoading(false);
     }
@@ -56,6 +58,10 @@ export default function DashboardPage() {
     ? Math.max(0, Math.ceil((new Date(ticket.called_at).getTime() + CALLED_TIMEOUT_MS - now) / 1000))
     : 0, [now]);
   const formatRemaining = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const formatElapsed = (ticket: AdminTicket) => {
+    const seconds = ticket.called_at ? Math.max(0, Math.floor((now - new Date(ticket.called_at).getTime()) / 1000)) : 0;
+    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}経過`;
+  };
   const statusLabels: Record<TicketStatus, string> = {
     waiting: "待機中",
     called: "呼び出し中",
@@ -110,72 +116,45 @@ export default function DashboardPage() {
         <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
           <Link href="/dashboard" className="active"><span>▦</span>ダッシュボード</Link>
+          <Link href="/tickets"><span>▤</span>受付一覧</Link>
           <Link href="/settings"><span>⚙</span>店舗設定</Link>
         </nav>
-        <button className="sidebar-call-button" onClick={handleCallNext} disabled={!canCallNext}><b>{actionID === "call-next" ? "呼出中…" : waitingCount === 0 ? "待機なし" : "次を呼ぶ"}</b>{calledCount > 0 && <small className="call-countdown">{calledCount}組呼出中</small>}</button>
         <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
       </aside>
 
       <div className="console-main">
         <div className="console-body">
+          <header className="dashboard-page-header"><div className="dashboard-title-line"><h1>ダッシュボード</h1><time suppressHydrationWarning>{new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(new Date())}</time></div><span className={`dashboard-store-status ${storeStatus === "open" ? "open" : "closed"}`}>{storeStatus === "open" ? "受付中" : "受付停止"}</span></header>
           <section className="call-workspace">
             <section className="db-metrics">
-              <article><div><span>待機状況</span><small>待機中</small></div><strong>{waitingCount}</strong><em className="metric-dot amber" /></article>
-              <article><div><span>呼び出し状況</span><small>呼び出し中</small></div><strong>{calledCount}</strong><em className="metric-dot green" /></article>
-              <article><div><span>本日の完了</span><small>完了</small></div><strong>{doneCount}</strong><em className="metric-dot blue" /></article>
+              <article><div><span>待機中</span></div><strong>{waitingCount}<small>組</small></strong><em className="metric-dot amber" /></article>
+              <article><div><span>呼び出し中</span></div><strong>{calledCount}<small>組</small></strong><em className="metric-dot green" /></article>
+              <article><div><span>本日の完了</span></div><strong>{doneCount}<small>組</small></strong><em className="metric-dot blue" /></article>
             </section>
-
             <section className="next-customer-panel" aria-label="次に呼ばれるお客様">
-              <div className="next-customer-label"><span>▶</span><div><small>次のお客様</small><b>次に呼ばれるお客様</b></div></div>
               {nextTicket ? (
                 <div className="next-customer-data">
                   <span className="next-number">{nextTicket.waitingNumber}</span>
-                  <b className="next-name">{nextTicket.name}</b>
-                  <span className="next-party">{nextTicket.partySize}名様</span>
-                  <span className="next-phone">{nextTicket.account.phone_number}</span>
+                  <div className="next-customer-main"><small>次のお客様</small><b className="next-name">{nextTicket.name} 様</b></div>
+                  <div className="next-customer-meta"><strong className="next-party">{nextTicket.partySize}名様</strong><span className="next-phone">{nextTicket.account.phone_number}</span></div>
                 </div>
               ) : <p className="next-customer-empty">現在、呼び出し待ちのお客様はいません</p>}
             </section>
 
             <div className="primary-call-area">
-              <button className="db-call-button" onClick={handleCallNext} disabled={!canCallNext}><div><small>{nextTicket ? `次は${nextPartySize}名様` : "次のお客様はいません"}</small><b>{actionID === "call-next" ? "呼び出し中…" : nextTicket ? "次を呼ぶ" : "待機中なし"}</b>{calledCount > 0 && <em className="countdown-note">{calledCount}組呼び出し中</em>}</div></button>
+              <button className="db-call-button" onClick={handleCallNext} disabled={!canCallNext}><div><small>{nextTicket ? `${nextTicket.waitingNumber}番 ${nextTicket.name}様を呼び出します` : "待機中のお客様はいません"}</small><b>{actionID === "call-next" ? "呼び出し中…" : "次を呼ぶ"}</b></div></button>
             </div>
+            <section className="active-customer-screen called-customer-screen">
+              <article className="active-list called-list">
+                <header><div><h2>現在呼び出し中</h2></div><strong>{calledPeople}名・{calledCount}組</strong></header>
+                <div className="active-list-columns"><span>番号</span><span>お客様</span><span>操作</span></div>
+                <div className="active-list-body">
+                  {calledTickets.length ? calledTickets.map((ticket) => <div className="active-customer-row" key={ticket.id}><span className="active-number">{ticket.waitingNumber}</span><div className="active-customer-info"><b>{ticket.name}</b><div><span>{ticket.partySize}名様</span><small>{formatElapsed(ticket)}</small></div></div><button onClick={() => void updateStatus(ticket.id, "done")} disabled={actionID !== null}>到着</button></div>) : <p>現在呼び出し中のお客様はいません</p>}
+                </div>
+              </article>
+            </section>
           </section>
 
-          <section className="active-customer-screen called-customer-screen">
-            <article className="active-list called-list">
-              <header><div><span className="active-list-dot called" /><h2>現在呼び出し中のお客様</h2></div><strong>{calledPeople}名・{calledCount}組</strong></header>
-              <div className="active-list-body">
-                {calledTickets.length ? calledTickets.map((ticket) => <div className="active-customer-row" key={ticket.id}><span className="active-number">{ticket.waitingNumber}</span><b>{ticket.name}</b><span>{ticket.partySize}名様</span><strong>{formatRemaining(getRemainingSeconds(ticket))}</strong><button onClick={() => void updateStatus(ticket.id, "done")} disabled={actionID !== null}>到着</button></div>) : <p>現在呼び出し中のお客様はいません</p>}
-              </div>
-            </article>
-          </section>
-
-          <section className="db-panel">
-            <div className="db-panel-header"><div><h2>チケット一覧</h2><p>現在の待ちチケットを管理</p></div><div className="table-meta"><span>{tickets.length}件</span><button onClick={() => void loadTickets()}>↻ 更新</button></div></div>
-            {error && <p className="form-error queue-error" role="alert">{error}</p>}
-            {loading ? <div className="empty-state">データを読み込んでいます…</div> : tickets.length === 0 ? <div className="empty-state"><span>✓</span><b>対象データはありません</b></div> : (
-              <div className="db-table-wrap">
-                <table className="db-table">
-                  <thead><tr><th>待ち番号</th><th>お客様</th><th>人数</th><th>電話番号</th><th>営業日</th><th>ステータス</th><th>操作</th></tr></thead>
-                  <tbody>
-                    {tickets.map((ticket) => (
-                      <tr key={ticket.id}>
-                        <td><span className="waiting-number-badge">{ticket.waitingNumber}</span></td>
-                        <td><div className="customer-cell"><span>{ticket.name.slice(0, 1)}</span><div><b>{ticket.name}</b></div></div></td>
-                        <td><b>{ticket.partySize}</b><small className="unit-label">名</small></td>
-                        <td className="mono-cell">{ticket.account.phone_number}</td>
-                        <td className="mono-cell">{ticket.business_date}</td>
-                        <td><span className={`db-status ${ticket.status}`}><i />{statusLabels[ticket.status]}{ticket.status === "called" && <strong className="ticket-countdown"> {formatRemaining(getRemainingSeconds(ticket))}</strong>}</span></td>
-                        <td><select className="db-select" value={ticket.status} disabled={actionID !== null} onChange={(event) => void updateStatus(ticket.id, event.target.value as TicketStatus)} aria-label={`${ticket.waitingNumber}番のステータス`}><option value="waiting">待機中</option><option value="called">呼び出し中</option><option value="done">完了</option><option value="cancelled">キャンセル</option></select></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <footer className="db-panel-footer"><span>最終更新：たった今</span><span>全{tickets.length}件を表示中</span></footer>
-          </section>
         </div>
       </div>
     </main>

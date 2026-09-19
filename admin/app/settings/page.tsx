@@ -154,9 +154,9 @@ export default function SettingsPage() {
         <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
           <Link href="/dashboard"><span>▦</span>ダッシュボード</Link>
+          <Link href="/tickets"><span>▤</span>受付一覧</Link>
           <Link href="/settings" className="active"><span>⚙</span>店舗設定</Link>
         </nav>
-        <button className="sidebar-call-button" onClick={() => void handleCallNext()} disabled={!email || loadingAction !== null || !canCallNext}><b>{loadingAction === "callNext" ? "呼出中…" : !nextTicket ? "待機なし" : "次を呼ぶ"}</b></button>
         <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link href="/auth/login" aria-label="ログアウト">↗</Link></div>
       </aside>
       <div className="console-main">
@@ -190,15 +190,15 @@ export default function SettingsPage() {
           </section>
 
           <section className="settings-card">
-            <div className="settings-card-heading"><span className="settings-icon">●</span><div><h2>受付ステータス</h2><p>新しい待ちチケットの受付状態を変更します。</p></div></div>
+            <div className="settings-card-heading"><span className="settings-icon">●</span><div><h2>受付ステータス</h2><p>新しい受付の状態を変更します。</p></div></div>
             <div className="status-options">
-              <button type="button" disabled={loadingAction !== null} className={form.status === "open" ? "status-option selected" : "status-option"} onClick={() => setForm({ ...form, status: "open" })}><span className="live-dot" /><b>受付中</b><small>新規チケットを受け付ける</small></button>
+              <button type="button" disabled={loadingAction !== null} className={form.status === "open" ? "status-option selected" : "status-option"} onClick={() => setForm({ ...form, status: "open" })}><span className="live-dot" /><b>受付中</b><small>新規受付を受け付ける</small></button>
               <button type="button" disabled={loadingAction !== null} className={form.status === "closed" ? "status-option selected closed" : "status-option closed"} onClick={() => setForm({ ...form, status: "closed" })}><span className="closed-dot" /><b>受付停止</b><small>新規受付を一時停止する</small></button>
             </div>
           </section>
 
           <section className="settings-card qr-settings-card">
-            <div className="settings-card-heading"><span className="settings-icon">▦</span><div><h2>店舗QRコード</h2><p>来店客が待ちチケットを発行するためのQRコードです。</p></div></div>
+            <div className="settings-card-heading"><span className="settings-icon">▦</span><div><h2>店舗QRコード</h2><p>来店客が受付を発行するためのQRコードです。</p></div></div>
             <div className="qr-settings-grid">
               <div className="qr-fields">
                 <label className="field-label">店舗ID<input className="input" value={storeID} onChange={(event) => setStoreID(event.target.value)} placeholder="店舗IDを入力" /></label>
