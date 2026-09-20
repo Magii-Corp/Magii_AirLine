@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { useDashboard } from "@/lib/use-dashboard";
 import {
   AdminTicket,
   callNext,
-  getTickets,
   setStoreSettings,
   subscribeTicketUpdates,
 } from "@/lib/admin-api";
@@ -28,7 +28,8 @@ const initialSettings: SettingsForm = {
 };
 
 export default function SettingsPage() {
-  const [email, setEmail] = useState("");
+  const { storeID: targetStoreID, email, data, error: syncError, refresh } = useDashboard();
+  const [dirty, setDirty] = useState(false);
   const [form, setForm] = useState(initialSettings);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -38,42 +39,14 @@ export default function SettingsPage() {
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
 
   useEffect(() => {
-    try {
-      setEmail(sessionStorage.getItem("magii-admin-email") || "owner@example.com");
-    } catch {
-      setEmail("owner@example.com");
+    if (!data) return;
+    setStoreID(data.store.id);
+    if (!dirty) {
+      const store = data.store;
+      setForm({ name: store.name, openTime: store.openTime, closeTime: store.closeTime,
+        avgMinutesPerParty: store.avgMinutesPerParty, status: store.status });
     }
-  }, []);
-
-  useEffect(() => {
-    if (!email) return;
-    void getTickets(email).then(({ tickets }) => {
-      setTickets(tickets);
-      if (tickets[0]?.store.id) {
-        const store = tickets[0].store;
-        setStoreID(store.id);
-        setForm({
-          name: store.name,
-          openTime: store.openTime,
-          closeTime: store.closeTime,
-          avgMinutesPerParty: store.avgMinutesPerParty,
-          status: store.status === "closed" ? "closed" : "open",
-        });
-      }
-    }).catch(() => setError("店舗IDを自動取得できませんでした。手動で入力してください"));
-  }, [email]);
-
-  useEffect(() => {
-    if (!email) return;
-    return subscribeTicketUpdates(email, ({ ticket }) => {
-      setTickets((current) => {
-        const exists = current.some((currentTicket) => currentTicket.id === ticket.id);
-        return exists
-          ? current.map((currentTicket) => currentTicket.id === ticket.id ? ticket : currentTicket)
-          : [...current, ticket];
-      });
-    });
-  }, [email]);
+  }, [data, dirty]);
 
   useEffect(() => {
     if (!storeID.trim()) {
@@ -123,29 +96,8 @@ export default function SettingsPage() {
       setError("平均待ち時間は1〜120分で入力してください");
       return;
     }
-    await runChange("settings", () => setStoreSettings({ email, ...form, name: form.name.trim() }));
-  };
-
-  const nextTicket = tickets.find((ticket) => ticket.status === "waiting") ?? null;
-  const canCallNext = Boolean(nextTicket);
-
-  const handleCallNext = async () => {
-    if (!email || loadingAction || !canCallNext) return;
-    setMessage("");
-    setError("");
-    setLoadingAction("callNext");
-    try {
-      const result = await callNext(email);
-      if (!result.success) throw new Error(result.message || "呼び出しに失敗しました");
-      if (result.ticket) {
-        setTickets((current) => current.map((ticket) => ticket.id === result.ticket?.id ? result.ticket : ticket));
-      }
-      setMessage("次のお客様を呼び出しました");
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "呼び出しに失敗しました");
-    } finally {
-      setLoadingAction(null);
-    }
+    const success = await runChange("settings", () => setStoreSettings({ storeID: targetStoreID, ...form, name: form.name.trim() }));
+    if (success) { await refresh(); setDirty(false); }
   };
 
   return (
@@ -167,7 +119,7 @@ export default function SettingsPage() {
           <p>営業時間や待ち時間の計算方法を設定します。</p>
         </section>
 
-        <div className="settings-form">
+        <div className="settings-form" onChange={() => setDirty(true)}>
           <section className="settings-card">
             <div className="settings-card-heading"><span className="settings-icon">店</span><div><h2>店舗情報</h2><p>管理画面やお客様向け画面に表示する店舗名です。</p></div></div>
             <div className="settings-fields">
@@ -192,8 +144,8 @@ export default function SettingsPage() {
           <section className="settings-card">
             <div className="settings-card-heading"><span className="settings-icon">●</span><div><h2>受付ステータス</h2><p>新しい受付の状態を変更します。</p></div></div>
             <div className="status-options">
-              <button type="button" disabled={loadingAction !== null} className={form.status === "open" ? "status-option selected" : "status-option"} onClick={() => setForm({ ...form, status: "open" })}><span className="live-dot" /><b>受付中</b><small>新規受付を受け付ける</small></button>
-              <button type="button" disabled={loadingAction !== null} className={form.status === "closed" ? "status-option selected closed" : "status-option closed"} onClick={() => setForm({ ...form, status: "closed" })}><span className="closed-dot" /><b>受付停止</b><small>新規受付を一時停止する</small></button>
+              <button type="button" disabled={loadingAction !== null} className={form.status === "open" ? "status-option selected" : "status-option"} onClick={() => { setDirty(true); setForm({ ...form, status: "open" }); }}><span className="live-dot" /><b>受付中</b><small>新規受付を受け付ける</small></button>
+              <button type="button" disabled={loadingAction !== null} className={form.status === "closed" ? "status-option selected closed" : "status-option closed"} onClick={() => { setDirty(true); setForm({ ...form, status: "closed" }); }}><span className="closed-dot" /><b>受付停止</b><small>新規受付を一時停止する</small></button>
             </div>
           </section>
 
@@ -213,7 +165,7 @@ export default function SettingsPage() {
 
           <div className="settings-save-bar"><div><b>設定をまとめて保存</b><span>店舗名、営業時間、待ち時間、受付状態を一括更新します。</span></div><button type="button" onClick={() => void saveSettings()} disabled={!email || loadingAction !== null}>{loadingAction === "settings" ? "保存中…" : "設定を保存"}</button></div>
 
-          {error && <p className="form-error settings-message error" role="alert">{error}</p>}
+          {(error || syncError) && <p className="form-error settings-message error" role="alert">{error || syncError}</p>}
           {message && <p className="settings-message success" role="status">{message}</p>}
         </div>
         </div>
