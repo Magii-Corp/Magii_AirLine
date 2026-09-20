@@ -1,6 +1,6 @@
 /**
- * Supabase Database Types
- * supabase gen types typescript で生成した型を配置
+ * サーバー側データベーススキーマの型定義
+ * 管理フロントからデータベースへ直接接続する用途では使用しない
  */
 
 export type Json =
@@ -138,8 +138,7 @@ export type Database = {
 export type TicketStatus =
   | "waiting"
   | "called"
-  | "seated"
-  | "no_show"
+  | "done"
   | "cancelled";
 
 export type StaffRole = "owner" | "manager" | "staff";
