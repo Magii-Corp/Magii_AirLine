@@ -3,3 +3,8 @@
 .DS_Store
 supabase/.temp/
 supabase/.branches/
+admin/adminapi設計.txt
+admin/ダッシュボード画面.png
+admin/node_modules*
+admin/.next*
+admin/tsconfig.tsbuildinfo
