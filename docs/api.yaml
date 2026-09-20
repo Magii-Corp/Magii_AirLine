@@ -1,715 +1,828 @@
 openapi: 3.0.3
 info:
   title: Magii AirLine API
-  description: 店舗待ち行列管理システムのAPI仕様
-  version: 1.0.0
+  description: |
+    店舗待ち行列管理システムの API 仕様（管理側 + お客様側）。
+
+    解説は `docs/api_design.md`、リスクと未決事項は `docs/risks.md` を参照。
+
+    ## 設計方針
+
+    - **フィールド名は camelCase**。DB は snake_case なので、変換は
+      `server/src/serialize/` に集約している。
+      ただし仕様書が snake_case を指定しているフィールド
+      （`phone_number` / `business_date` / `called_at` / `updated_at`）は
+      そのまま従う。
+    - **HTTP ステータスを使い分ける**。業務的な失敗も 400 / 404 / 409 で表し、
+      ボディに `{ success: false, code, message }` を返す。
+      （v3.0.0 までの「業務エラーも常に 200」規約は廃止した）
+    - **Ticket.store は Store オブジェクト丸ごとの入れ子**。仕様書の型定義に従う。
+      管理側とお客様側で射影が異なり、お客様側には
+      `email` / `counterDate` / `lastNumber` を返さない。
+
+    ## リアルタイム通知
+
+    ポーリング（`getEvent` / `resetEvent` と `store_events` テーブル）は廃止し、
+    SSE に置き換えた。通知はすべて Postgres のトリガ（`pg_notify`）が発生源で、
+    API ハンドラもバックグラウンドジョブも SSE を直接叩かない。
+    psql で直接 UPDATE した場合でも通知は飛ぶ。
+
+    `pg_notify` には再送が無いため、サーバーの LISTEN 接続が落ちている間の
+    通知は失われる。再接続のたびに `sync.required` を配信するので、
+    クライアントはそれを受けてスナップショットを取り直すこと。
+    `updated_at` の大小でイベントをマージしてはいけない。
+
+    ## 認証
+
+    **実装していない。** `login` は照合して storeID を返すだけでトークンを
+    発行しない。しかも storeID は顧客向け QR コードの中身そのものなので、
+    QR を読んだ客が `call-next` を直接叩ける。
+    公開前に必ず塞ぐこと（`docs/risks.md` §1-1）。
+  version: 4.0.0
 
 servers:
-  - url: https://your-project.supabase.co/functions/v1
-    description: Supabase Edge Functions
+  - url: http://127.0.0.1:8787
+    description: ローカル開発サーバ (server/src/index.ts, `npm run dev`)
 
 tags:
-  - name: Guest
-    description: ゲスト（来店客）向けAPI
   - name: Admin
     description: 管理者（店舗スタッフ）向けAPI
+  - name: Customer
+    description: 来店客（iOSアプリ）向けAPI
+  - name: System
 
 paths:
-  # ============================================================
-  # Guest Endpoints
-  # ============================================================
-  /auth/registerUser:
-    post:
-      tags: [Guest]
-      summary: ユーザー登録
-      description: デバイスIDで新規ゲストを登録、または既存ゲストを更新
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterUserRequest'
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegisterUserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /reservation:
+  /health:
     get:
-      tags: [Guest]
-      summary: 予約状況取得
-      description: ゲストの現在の予約状況を取得
-      parameters:
-        - name: shop_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: user_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [System]
+      summary: 死活監視
+      description: DB 接続と LISTEN 接続の状態、SSE の接続数を返す。
       responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetReservationResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-    post:
-      tags: [Guest]
-      summary: 予約作成
-      description: 新しい待ち行列チケットを発行
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateReservationRequest'
-      responses:
-        '201':
-          description: 作成成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateReservationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          description: 既に待ち行列に並んでいる
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-
-  /reservation/{id}/cancel:
-    patch:
-      tags: [Guest]
-      summary: 予約キャンセル
-      description: 待ち行列から離脱
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
+        "200":
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-        '404':
-          $ref: '#/components/responses/NotFound'
+                  ok: { type: boolean }
+                  db: { type: string, enum: [up, down] }
+                  listen: { type: string, enum: [up, down] }
+                  sse:
+                    type: object
+                    properties:
+                      admins: { type: integer }
+                      customers: { type: integer }
 
-  /reservation/{id}/arrive:
-    patch:
-      tags: [Guest]
-      summary: 到着報告
-      description: 呼び出し後に到着を報告
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-        '404':
-          $ref: '#/components/responses/NotFound'
+  # ----------------------------------------------------------------- Admin
 
-  /waiting:
-    get:
-      tags: [Guest]
-      summary: 待機状況取得
-      description: リアルタイム購読用の待機状況取得
-      parameters:
-        - name: shop_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: user_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetWaitingResponse'
-
-  # ============================================================
-  # Admin Endpoints
-  # ============================================================
-  /auth/registerShop:
-    post:
-      tags: [Admin]
-      summary: 店舗登録
-      description: 新規店舗とオーナーアカウントを作成
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterShopRequest'
-      responses:
-        '201':
-          description: 作成成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegisterShopResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /auth/login:
+  /admin/auth/login:
     post:
       tags: [Admin]
       summary: ログイン
-      description: 管理者認証
+      description: |
+        入力を検証し、該当店舗IDを返す。パスワードは返さない。
+
+        トークンは発行しない。フロントは storeID と表示用 email を
+        sessionStorage に保存するが、これはブラウザ内保存であって
+        セッション認証ではない。
+
+        メールアドレスが存在しない場合もパスワード誤りと同じ
+        `INVALID_CREDENTIALS` を返す（存在を漏らさないため）。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
       responses:
-        '200':
+        "200":
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '401':
-          description: 認証失敗
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  storeID: { type: string, format: uuid }
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /admin/stores:
+    post:
+      tags: [Admin]
+      summary: 店舗登録
+      description: |
+        `counterDate` / `lastNumber` は互換用入力。受け取るが無視し、
+        保存値はサーバーが「今日 / 0」に決める。
+
+        登録時の `status` が初期状態になり、登録時刻より後の最初の
+        `openTime` / `closeTime` から自動切り替えが始まる。
+
+        `openTime == closeTime` は切り替え先が曖昧になるため 400 で拒否する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password, openTime, closeTime, avgMinutesPerParty, status]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string, minLength: 1, maxLength: 100 }
+                password: { type: string }
+                openTime: { $ref: "#/components/schemas/HhMm" }
+                closeTime: { $ref: "#/components/schemas/HhMm" }
+                avgMinutesPerParty: { type: integer, minimum: 1, maximum: 120 }
+                counterDate: { type: string, description: 互換用。無視される }
+                lastNumber: { type: integer, description: 互換用。無視される }
+                status: { $ref: "#/components/schemas/StoreStatus" }
+      responses:
+        "201":
+          description: 作成
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiError'
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  store: { $ref: "#/components/schemas/AdminStore" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
   /admin/dashboard:
     get:
       tags: [Admin]
-      summary: ダッシュボード取得
-      description: 店舗の待ち行列状況と統計を取得
-      security:
-        - BearerAuth: []
+      summary: 管理画面取得
+      description: |
+        店舗情報と本日の全状態の受付を、一貫したDBスナップショットから返す。
+        ダッシュボード・受付一覧・設定画面で共用する。
+
+        `tickets` は waitingNumber 昇順、同番号なら id 順。
+        受付0件でも `store` は必ず返る。
+
+        絞り込みはサーバーがライブ計算した今日の営業日で行う。
+        `store.counterDate` が古い場合でも過去日を今日として返さない
+        （その場合 `counterDate` は今日、`lastNumber` は 0 として提示する）。
+        このエンドポイントは書き込みを行わない。
+
+        設定画面のQRは `store.id` 自体をフロントで画像化する。専用APIは不要。
+      parameters:
+        - $ref: "#/components/parameters/StoreIDQuery"
       responses:
-        '200':
+        "200":
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DashboardResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                type: object
+                properties:
+                  store: { $ref: "#/components/schemas/AdminStore" }
+                  tickets:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminTicket" }
+                  businessDate: { $ref: "#/components/schemas/BusinessDate" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "404": { $ref: "#/components/responses/Error" }
 
-  /admin/call-next:
+  /admin/tickets/call-next:
     post:
       tags: [Admin]
       summary: 次を呼ぶ
-      description: 待ち行列の先頭を呼び出し
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CallNextResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+      description: |
+        対象店舗・本日の waiting を番号順で1件ロックして called へ更新する。
+        選択と更新を同一トランザクション・同一文で行うため二重呼び出しは起きない。
 
-  /admin/tickets/{id}/status:
-    patch:
-      tags: [Admin]
-      summary: チケット状態更新
-      description: チケットのステータスを変更
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        同時呼び出し数に上限は無い。`SKIP LOCKED` により、同時に2リクエストが
+        来ても先頭で詰まらずそれぞれ1番と2番を取る。
+
+        `called_at` は DB 時刻。`updated_at` も同一トランザクションで
+        同じ値に更新される。
+
+        店舗が closed でも既存受付の呼び出しは継続できる。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTicketStatusRequest'
+              type: object
+              required: [storeID]
+              properties:
+                storeID: { type: string, format: uuid }
       responses:
-        '200':
+        "200":
+          description: 成功。実際に更新した完全な Ticket を返す
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  ticket: { $ref: "#/components/schemas/AdminTicket" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: 待機中の受付がない (`NO_WAITING_TICKET`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /admin/tickets/{ticketID}/status:
+    patch:
+      tags: [Admin]
+      summary: 受付状態変更
+      description: |
+        `storeID` と `ticketID` の両方で対象行を特定する。
+        店舗が一致しない場合は存在を漏らさず `TICKET_NOT_FOUND` を返す。
+
+        可能な遷移: `waiting → called / cancelled`、`called → done / cancelled`。
+
+        同じ状態を再指定した場合は UPDATE 文自体を発行せず現在値を返す。
+        `updated_at` も動かず、SSE 通知も飛ばない。
+
+        `called` にする場合のみ `called_at` を DB 時刻に設定し、
+        他の状態では既存値を保持する。
+      parameters:
+        - $ref: "#/components/parameters/TicketIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storeID, newState]
+              properties:
+                storeID: { type: string, format: uuid }
+                newState: { $ref: "#/components/schemas/TicketStatus" }
+      responses:
+        "200":
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateTicketStatusResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  ticket: { $ref: "#/components/schemas/AdminTicket" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: 許可されない遷移 (`INVALID_TRANSITION`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
 
   /admin/store/settings:
     patch:
       tags: [Admin]
-      summary: 店舗設定更新
-      description: 店舗の設定を変更
-      security:
-        - BearerAuth: []
+      summary: 店舗設定保存
+      description: |
+        設定APIは全項目を送るため、`status` を含んでいるだけでは手動変更と
+        扱わない。**保存直前のDBの status と送信された status が異なる場合**を
+        手動変更とする。同値の再保存では手動指定の期限を延長しない。
+
+        処理順が重要で、サーバーは1トランザクション内で
+        「① 到来済みの自動切り替えを先に反映 → ② その後の値を保存直前の
+        status とみなす → ③ 比較して手動変更か判定」の順に処理する。
+        詳細と、この順序が防いでいるバグは `docs/api_design.md` §5 を参照。
+
+        `openTime` / `closeTime` だけの変更では現在の status を即座に変更せず、
+        次回切り替えだけを保存時刻より後の新しい時刻で計算し直す。
+
+        `openTime == closeTime` は 400 で拒否する。
+
+        `closed` は新規受付の停止を意味する。既存受付の呼び出し・完了操作と
+        15分自動完了は継続する。
+
+        受付が0件でも `store.updated` を配信する。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateStoreSettingsRequest'
+              type: object
+              required: [storeID, name, openTime, closeTime, avgMinutesPerParty, status]
+              properties:
+                storeID: { type: string, format: uuid }
+                name: { type: string, minLength: 1, maxLength: 100 }
+                openTime: { $ref: "#/components/schemas/HhMm" }
+                closeTime: { $ref: "#/components/schemas/HhMm" }
+                avgMinutesPerParty: { type: integer, minimum: 1, maximum: 120 }
+                status: { $ref: "#/components/schemas/StoreStatus" }
       responses:
-        '200':
+        "200":
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateStoreSettingsResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  store: { $ref: "#/components/schemas/AdminStore" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/tickets/events:
+    get:
+      tags: [Admin]
+      summary: リアルタイム購読 (SSE)
+      description: |
+        対象店舗のイベントのみ配信する。フロントは `EventSource` を使う。
+
+        接続直後に `retry: 3000` と `sync.required` を送る。
+        `sync.required` を受けたら `GET /admin/dashboard` を取り直すこと。
+
+        ハートビートとして `: hb` を20秒ごとに送る。
+
+        **イベント名**
+
+        | event | 内容 |
+        |---|---|
+        | `ticket.created` | お客様側からの新規受付を含む作成 |
+        | `ticket.updated` | 呼び出し、完了、キャンセル、自動完了、氏名/人数等の変更 |
+        | `store.updated` | 店舗設定/受付状態変更（自動切り替えを含む） |
+        | `business-date.changed` | 営業日切り替え |
+        | `sync.required` | 接続時・再接続時・関連アカウント変更時 |
+
+        前日の `called` も15分自動完了の対象だが、本日の一覧には含めないため
+        チケット系イベントは本日の営業日のものだけを配信する。
+
+        自動切り替え先が現在値と同じ場合は状態変更が発生しないので
+        `store.updated` は飛ばない。
+      parameters:
+        - $ref: "#/components/parameters/StoreIDQuery"
+      responses:
+        "200":
+          description: イベントストリーム
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                retry: 3000
+
+                event: ticket.updated
+                data: {"type":"ticket.updated","storeID":"...","ticket":{...},"serverTime":"..."}
+
+                : hb
+        "404": { $ref: "#/components/responses/Error" }
+
+  # -------------------------------------------------------------- Customer
+
+  /customer/stores/{storeID}:
+    get:
+      tags: [Customer]
+      summary: 店舗情報取得（QRコード読み取り後）
+      description: |
+        QRコードに含まれる storeID で店舗情報を取得する。
+        `store.status` が `closed` の場合、アプリ側で受付停止を表示する。
+      parameters:
+        - $ref: "#/components/parameters/StoreIDPath"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  store: { $ref: "#/components/schemas/CustomerStore" }
+                  businessDate: { $ref: "#/components/schemas/BusinessDate" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /customer/auth/phone:
+    post:
+      tags: [Customer]
+      summary: 電話番号認証
+      description: |
+        電話番号で既存アカウントを検索し、なければ新規作成する。
+        ハイフンあり/なし両方を受け付け、内部で正規化して保存する
+        （`+81` 形式も 0 始まりへ寄せる）。
+
+        検索と作成は1文のアトミックな upsert なので、初回同時ログインでも
+        アカウントが二重に作られない。
+
+        アプリは `account.id` をローカルに保存して以後のリクエストで使用する。
+
+        本番環境では SMS 認証を追加することを推奨する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number]
+              properties:
+                phone_number: { type: string, example: "090-1234-5678" }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  account: { $ref: "#/components/schemas/Account" }
+                  isNewAccount: { type: boolean }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /customer/tickets:
+    post:
+      tags: [Customer]
+      summary: 受付作成（順番を取る）
+      description: |
+        受付可否はサーバーが確定した `store.status` で判定する。
+        クライアントが営業時間から計算してはいけない。
+
+        `waitingNumber` は店舗の本日の `lastNumber + 1` を原子的に採番する
+        （店舗行をロックした上で行うので歯抜けも重複も起きない）。
+
+        `phone_number` は形式のみ検証し、アカウントの電話番号は書き換えない。
+
+        `groupsAhead` は自分より前の waiting 件数、
+        `estimatedMinutes` は `groupsAhead × store.avgMinutesPerParty`。
+
+        成功時、管理画面へ `ticket.created` を配信する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storeID, accountID, name, phone_number, partySize]
+              properties:
+                storeID: { type: string, format: uuid }
+                accountID: { type: string, format: uuid }
+                name: { type: string, minLength: 1, maxLength: 100 }
+                phone_number: { type: string }
+                partySize: { type: integer, minimum: 1, maximum: 99 }
+      responses:
+        "201":
+          description: 作成
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerTicketResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404":
+          description: 店舗が見つからない (`STORE_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+        "409":
+          description: |
+            `STORE_CLOSED` 受付停止中 / `ALREADY_WAITING` 既に受付中
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /customer/tickets/mine:
+    get:
+      tags: [Customer]
+      summary: 自分の受付状況取得
+      description: |
+        指定アカウント・店舗・本日の `waiting` / `called` の受付を返す。
+        `done` / `cancelled` は返さない。
+
+        該当なしの場合は `ticket: null`、`groupsAhead: 0`、`estimatedMinutes: 0`。
+
+        `groupsAhead` は自分より前の waiting 件数（自分が called なら 0）。
+      parameters:
+        - name: accountID
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/StoreIDQuery"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CustomerTicketResponse"
+                  - type: object
+                    properties:
+                      ticket:
+                        allOf: [{ $ref: "#/components/schemas/CustomerTicket" }]
+                        nullable: true
+        "400": { $ref: "#/components/responses/Error" }
+
+  /customer/tickets/{ticketID}:
+    get:
+      tags: [Customer]
+      summary: 受付詳細取得
+      description: |
+        `ticketID` で受付詳細を取得する。アプリ再起動時の状態復元に使用する。
+
+        ⚠️ 所有者チェックが無い（仕様どおり）。ticketID を知る者は氏名を読める。
+        `docs/risks.md` §1-2 を参照。
+      parameters:
+        - $ref: "#/components/parameters/TicketIDPath"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerTicketResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /customer/tickets/{ticketID}/cancel:
+    post:
+      tags: [Customer]
+      summary: 受付キャンセル
+      description: |
+        `status` が `waiting` または `called` の受付のみキャンセル可能。
+        `done` / `cancelled` からの遷移は不可。
+
+        `accountID` が一致しない場合は存在を漏らさず `TICKET_NOT_FOUND` を返す。
+
+        コミット後に `ticket.cancelled` を配信する。
+      parameters:
+        - $ref: "#/components/parameters/TicketIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountID]
+              properties:
+                accountID: { type: string, format: uuid }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  ticket: { $ref: "#/components/schemas/CustomerTicket" }
+                  serverTime: { $ref: "#/components/schemas/ServerTime" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: キャンセル不可 (`CANNOT_CANCEL`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /customer/tickets/events:
+    get:
+      tags: [Customer]
+      summary: リアルタイム購読 (SSE)
+      description: |
+        指定した `ticketID` に関連するイベントのみ配信する。
+
+        接続直後に `retry: 3000` と、現在値を載せた `ticket.updated` を送る。
+        これによりアプリ再起動時の状態復元に別途 GET を投げる必要がない。
+
+        ハートビートとして `: hb` を20秒ごとに送る。
+        接続切断時はアプリ側で再接続する。
+
+        **イベント名**
+
+        | event | 内容 |
+        |---|---|
+        | `ticket.called` | 呼び出し（プッシュ通知トリガー） |
+        | `ticket.done` | 完了（店舗操作 または 15分自動完了） |
+        | `ticket.cancelled` | キャンセル |
+        | `ticket.updated` | 接続直後の現在値、および状態以外の変更 |
+        | `queue.updated` | 待ち組数更新（前の組が進んだ時） |
+        | `store.updated` | 店舗状態変更 |
+
+        状態変化では固有イベントのみを送り、`ticket.updated` を重ねて
+        送ることはしない（アプリの画面遷移が二重に走るため）。
+
+        チケット系イベントには `groupsAhead` / `estimatedMinutes` を付加する。
+      parameters:
+        - name: ticketID
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: イベントストリーム
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                retry: 3000
+
+                event: ticket.called
+                data: {"type":"ticket.called","ticket":{...},"groupsAhead":0,"estimatedMinutes":0,"serverTime":"..."}
+        "404": { $ref: "#/components/responses/Error" }
+
+  /customer/devices:
+    post:
+      tags: [Customer]
+      summary: プッシュ通知トークン登録
+      description: |
+        APNs トークンをサーバーに登録する。同一アカウントで複数デバイス登録可能。
+        トークンを衝突キーにした upsert なので、既存トークンの再登録は上書きになる。
+
+        ⚠️ 現在の実装はトークンの保存までで、APNs への実送信は
+        ログ出力のみのスタブ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountID, deviceToken, platform]
+              properties:
+                accountID: { type: string, format: uuid }
+                deviceToken: { type: string }
+                platform: { type: string, enum: [ios] }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Success" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /customer/devices/{deviceToken}:
+    delete:
+      tags: [Customer]
+      summary: プッシュ通知トークン削除
+      description: ログアウト時やアプリ削除時に呼ぶ。存在しなくても成功を返す（冪等）。
+      parameters:
+        - name: deviceToken
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Success" }
 
 components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+  parameters:
+    StoreIDQuery:
+      name: storeID
+      in: query
+      required: true
+      schema: { type: string, format: uuid }
+    StoreIDPath:
+      name: storeID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TicketIDPath:
+      name: ticketID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
-    BadRequest:
-      description: リクエスト不正
+    Error:
+      description: エラー
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-    Unauthorized:
-      description: 認証エラー
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-    NotFound:
-      description: リソースが見つからない
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
+          schema: { $ref: "#/components/schemas/ErrorBody" }
 
   schemas:
-    # ============================================================
-    # Common
-    # ============================================================
-    ApiError:
-      type: object
-      required:
-        - error
-      properties:
-        data:
-          type: 'null'
-        error:
-          type: object
-          required:
-            - code
-            - message
-          properties:
-            code:
-              type: string
-            message:
-              type: string
+    HhMm:
+      type: string
+      pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+      description: 店舗現地時刻の HH:mm
+      example: "10:00"
+
+    BusinessDate:
+      type: string
+      format: date
+      description: 営業日 YYYY-MM-DD（Asia/Tokyo で判定）
+      example: "2026-09-20"
+
+    ServerTime:
+      type: string
+      format: date-time
+      description: UTC の ISO 8601
+      example: "2026-09-20T09:34:45.274Z"
 
     TicketStatus:
       type: string
-      enum:
-        - waiting
-        - called
-        - seated
-        - no_show
-        - cancelled
+      enum: [waiting, called, done, cancelled]
 
-    # ============================================================
-    # Guest Schemas
-    # ============================================================
-    RegisterUserRequest:
-      type: object
-      required:
-        - device_id
-        - name
-      properties:
-        device_id:
-          type: string
-        name:
-          type: string
-          maxLength: 100
-        phone:
-          type: string
+    StoreStatus:
+      type: string
+      enum: [open, closed]
+      description: |
+        「今、新規受付を受け付けるか」の確定値。
+        openTime/closeTime は自動切り替えの時刻であって状態そのものではない。
+        クライアントが営業時間から計算してはいけない。
 
-    RegisterUserResponse:
+    Success:
       type: object
       properties:
-        data:
-          type: object
-          properties:
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                device_id:
-                  type: string
-                name:
-                  type: string
-                phone:
-                  type: string
-                  nullable: true
-        error:
-          type: 'null'
+        success: { type: boolean, enum: [true] }
 
-    CreateReservationRequest:
+    ErrorBody:
       type: object
-      required:
-        - store_id
-        - guest_id
-        - party_size
       properties:
-        store_id:
+        success: { type: boolean, enum: [false] }
+        code:
           type: string
-          format: uuid
-        guest_id:
-          type: string
-          format: uuid
-        party_size:
-          type: integer
-          minimum: 1
-          maximum: 20
+          enum:
+            - STORE_NOT_FOUND
+            - STORE_CLOSED
+            - INVALID_PHONE
+            - INVALID_INPUT
+            - ALREADY_WAITING
+            - TICKET_NOT_FOUND
+            - CANNOT_CANCEL
+            - SERVER_ERROR
+            - EMAIL_ALREADY_EXISTS
+            - INVALID_CREDENTIALS
+            - NO_WAITING_TICKET
+            - INVALID_TRANSITION
+        message: { type: string }
+      example:
+        success: false
+        code: ALREADY_WAITING
+        message: すでに受付中の順番があります
 
-    CreateReservationResponse:
+    Account:
       type: object
       properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              $ref: '#/components/schemas/Reservation'
-        error:
-          type: 'null'
+        id: { type: string, format: uuid }
+        phone_number: { type: string, example: "09012345678" }
 
-    GetReservationResponse:
+    AdminStore:
+      type: object
+      description: 管理側に返す店舗
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        openTime: { $ref: "#/components/schemas/HhMm" }
+        closeTime: { $ref: "#/components/schemas/HhMm" }
+        avgMinutesPerParty: { type: integer }
+        counterDate: { $ref: "#/components/schemas/BusinessDate" }
+        lastNumber: { type: integer }
+        status: { $ref: "#/components/schemas/StoreStatus" }
+
+    CustomerStore:
+      type: object
+      description: |
+        お客様側に返す店舗。
+        email / counterDate / lastNumber は含めない。
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        openTime: { $ref: "#/components/schemas/HhMm" }
+        closeTime: { $ref: "#/components/schemas/HhMm" }
+        avgMinutesPerParty: { type: integer }
+        status: { $ref: "#/components/schemas/StoreStatus" }
+
+    TicketBase:
       type: object
       properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              $ref: '#/components/schemas/Reservation'
-              nullable: true
-        error:
-          type: 'null'
-
-    GetWaitingResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              type: object
-              nullable: true
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                party_size:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-                groups_ahead:
-                  type: integer
-                estimated_wait_minutes:
-                  type: integer
-        error:
-          type: 'null'
-
-    Reservation:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        waiting_number:
-          type: integer
-        party_size:
-          type: integer
-        status:
-          $ref: '#/components/schemas/TicketStatus'
-        groups_ahead:
-          type: integer
-        estimated_wait_minutes:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
+        id: { type: string, format: uuid }
+        account: { $ref: "#/components/schemas/Account" }
+        business_date: { $ref: "#/components/schemas/BusinessDate" }
+        waitingNumber: { type: integer }
+        name: { type: string }
+        partySize: { type: integer }
+        status: { $ref: "#/components/schemas/TicketStatus" }
         called_at:
-          type: string
-          format: date-time
+          allOf: [{ $ref: "#/components/schemas/ServerTime" }]
           nullable: true
+        updated_at: { $ref: "#/components/schemas/ServerTime" }
 
-    # ============================================================
-    # Admin Schemas
-    # ============================================================
-    RegisterShopRequest:
-      type: object
-      required:
-        - name
-        - email
-        - password
-      properties:
-        name:
-          type: string
-          maxLength: 100
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 8
-
-    RegisterShopResponse:
-      type: object
-      properties:
-        data:
-          type: object
+    AdminTicket:
+      allOf:
+        - $ref: "#/components/schemas/TicketBase"
+        - type: object
           properties:
-            shop:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                email:
-                  type: string
-                  format: email
-        error:
-          type: 'null'
+            store: { $ref: "#/components/schemas/AdminStore" }
 
-    LoginRequest:
-      type: object
-      required:
-        - email
-        - password
-      properties:
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-
-    LoginResponse:
-      type: object
-      properties:
-        data:
-          type: object
+    CustomerTicket:
+      allOf:
+        - $ref: "#/components/schemas/TicketBase"
+        - type: object
           properties:
-            access_token:
-              type: string
-            refresh_token:
-              type: string
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                email:
-                  type: string
-                  format: email
-        error:
-          type: 'null'
+            store: { $ref: "#/components/schemas/CustomerStore" }
 
-    DashboardResponse:
+    CustomerTicketResponse:
       type: object
       properties:
-        data:
-          type: object
-          properties:
-            store:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-                is_accepting:
-                  type: boolean
-            stats:
-              type: object
-              properties:
-                waiting_count:
-                  type: integer
-                called_count:
-                  type: integer
-                seated_count:
-                  type: integer
-                no_show_count:
-                  type: integer
-                cancelled_count:
-                  type: integer
-            queue:
-              type: array
-              items:
-                $ref: '#/components/schemas/QueueItem'
-        error:
-          type: 'null'
-
-    QueueItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        waiting_number:
+        success: { type: boolean, enum: [true] }
+        ticket: { $ref: "#/components/schemas/CustomerTicket" }
+        groupsAhead:
           type: integer
-        guest_name:
-          type: string
-        party_size:
+          description: 自分より前の waiting 件数。自分が called なら 0
+        estimatedMinutes:
           type: integer
-        status:
-          $ref: '#/components/schemas/TicketStatus'
-        wait_time_minutes:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-
-    CallNextResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            ticket:
-              type: object
-              nullable: true
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                guest_name:
-                  type: string
-                party_size:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-        error:
-          type: 'null'
-
-    UpdateTicketStatusRequest:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          $ref: '#/components/schemas/TicketStatus'
-
-    UpdateTicketStatusResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            ticket:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-        error:
-          type: 'null'
-
-    UpdateStoreSettingsRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 100
-        estimated_wait_time_per_group:
-          type: integer
-          minimum: 1
-          maximum: 120
-        is_accepting:
-          type: boolean
-
-    UpdateStoreSettingsResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            store:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-                estimated_wait_time_per_group:
-                  type: integer
-                is_accepting:
-                  type: boolean
-        error:
-          type: 'null'
+          description: groupsAhead × store.avgMinutesPerParty
+        serverTime: { $ref: "#/components/schemas/ServerTime" }
