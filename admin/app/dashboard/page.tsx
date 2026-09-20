@@ -1,153 +1,118 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useDashboard } from "@/lib/use-dashboard";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminTicket, callNext, changeTicketState, getDashboard, subscribeTicketUpdates, TicketStatus } from "@/lib/admin-api";
 
-// Mock data for development
-const mockQueue = [
-  { id: "1", waiting_number: 1, guest_name: "山田 太郎", party_size: 2, status: "called", wait_time_minutes: 15 },
-  { id: "2", waiting_number: 2, guest_name: "鈴木 花子", party_size: 4, status: "waiting", wait_time_minutes: 10 },
-  { id: "3", waiting_number: 3, guest_name: "田中 一郎", party_size: 1, status: "waiting", wait_time_minutes: 5 },
-];
-
-const mockStats = {
-  waiting_count: 2,
-  called_count: 1,
-  seated_count: 12,
-  no_show_count: 2,
-  cancelled_count: 1,
-};
+const CALLED_TIMEOUT_MS = 15 * 60 * 1000;
 
 export default function DashboardPage() {
-  const [queue, setQueue] = useState(mockQueue);
-  const [stats] = useState(mockStats);
-  const [isAccepting, setIsAccepting] = useState(true);
+  const { storeID, email, tickets, data, loading, error: syncError, now, refresh } = useDashboard();
+  const [actionID, setActionID] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const storeStatus = data?.store.status;
+  const waitingCount = useMemo(() => tickets.filter((ticket) => ticket.status === "waiting").length, [tickets]);
+  const calledCount = useMemo(() => tickets.filter((ticket) => ticket.status === "called").length, [tickets]);
+  const doneCount = useMemo(() => tickets.filter((ticket) => ticket.status === "done").length, [tickets]);
+  const nextTicket = useMemo(() => tickets.find((ticket) => ticket.status === "waiting") ?? null, [tickets]);
+  const calledTickets = useMemo(() => tickets.filter((ticket) => ticket.status === "called"), [tickets]);
+  const calledPeople = useMemo(() => calledTickets.reduce((total, ticket) => total + ticket.partySize, 0), [calledTickets]);
+  const nextPartySize = nextTicket?.partySize ?? 0;
+  const canCallNext = !loading && waitingCount > 0 && actionID === null;
+  const getRemainingSeconds = useCallback((ticket: AdminTicket) => ticket.called_at
+    ? Math.max(0, Math.ceil((new Date(ticket.called_at).getTime() + CALLED_TIMEOUT_MS - now) / 1000))
+    : 0, [now]);
+  const formatRemaining = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const formatElapsed = (ticket: AdminTicket) => {
+    const seconds = ticket.called_at ? Math.max(0, Math.floor((now - new Date(ticket.called_at).getTime()) / 1000)) : 0;
+    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}経過`;
+  };
+  const statusLabels: Record<TicketStatus, string> = {
+    waiting: "待機中",
+    called: "呼び出し中",
+    done: "完了",
+    cancelled: "キャンセル",
+  };
 
-  const handleCallNext = async () => {
-    // TODO: Implement API call
-    const nextWaiting = queue.find((t) => t.status === "waiting");
-    if (nextWaiting) {
-      setQueue(
-        queue.map((t) =>
-          t.id === nextWaiting.id ? { ...t, status: "called" } : t
-        )
-      );
+  const updateStatus = async (ticketID: string, newState: TicketStatus) => {
+    setActionID(ticketID);
+    setError("");
+    try {
+      const result = await changeTicketState(storeID, ticketID, newState);
+      if (!result.success) throw new Error(result.message);
+      await refresh();
+    } catch (error) {
+      setError(error instanceof Error && error.message ? error.message : "ステータスを変更できませんでした");
+    } finally {
+      setActionID(null);
     }
   };
 
-  const handleStatusChange = async (id: string, newStatus: string) => {
-    // TODO: Implement API call
-    setQueue(
-      queue.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
-    );
+  const handleCallNext = async () => {
+    const next = tickets.find((ticket) => ticket.status === "waiting");
+    if (!next) return;
+    setActionID("call-next");
+    setError("");
+    try {
+      const result = await callNext(storeID);
+      if (!result.success) throw new Error(result.message);
+      await refresh();
+    } catch (error) {
+      setError(error instanceof Error && error.message ? error.message : "次のお客様を呼び出せませんでした");
+    } finally {
+      setActionID(null);
+    }
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold">ダッシュボード</h1>
-          <p className="text-text-secondary">サンプル店舗</p>
-        </div>
-        <button
-          onClick={() => setIsAccepting(!isAccepting)}
-          className={`px-4 py-2 rounded-full text-sm font-medium ${
-            isAccepting
-              ? "bg-accent-green text-black"
-              : "bg-error text-white"
-          }`}
-        >
-          {isAccepting ? "受付中" : "受付停止"}
-        </button>
-      </header>
+    <main className="admin-console dashboard-console">
+      <aside className="console-sidebar">
+        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
+        <nav className="console-nav" aria-label="管理メニュー">
+          <Link href="/dashboard" className="active">ダッシュボード</Link>
+          <Link href="/tickets">受付一覧</Link>
+          <Link href="/settings">店舗設定</Link>
+        </nav>
+        <div className="sidebar-account"><span className="account-avatar">管</span><div><b>店舗管理者</b><small>{email}</small></div><Link className="sidebar-logout" href="/auth/login" aria-label="ログアウト">↗</Link></div>
+      </aside>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-        <div className="card text-center">
-          <p className="text-4xl font-bold">{stats.waiting_count}</p>
-          <p className="text-text-secondary text-sm">待機中</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-accent">{stats.called_count}</p>
-          <p className="text-text-secondary text-sm">呼び出し中</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-accent-green">{stats.seated_count}</p>
-          <p className="text-text-secondary text-sm">着席済み</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-error">{stats.no_show_count}</p>
-          <p className="text-text-secondary text-sm">不在</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-4xl font-bold text-text-secondary">{stats.cancelled_count}</p>
-          <p className="text-text-secondary text-sm">キャンセル</p>
-        </div>
-      </div>
-
-      {/* Call Next Button */}
-      <button
-        onClick={handleCallNext}
-        className="w-full h-20 bg-white text-black text-xl font-bold rounded-2xl mb-8 hover:bg-opacity-90 transition-colors"
-      >
-        次を呼ぶ
-      </button>
-
-      {/* Queue */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold mb-4">待ち行列</h2>
-
-        {queue.length === 0 ? (
-          <div className="card text-center py-12">
-            <p className="text-text-secondary">現在待機中のお客様はいません</p>
-          </div>
-        ) : (
-          queue.map((ticket) => (
-            <div
-              key={ticket.id}
-              className={`card flex items-center justify-between ${
-                ticket.status === "called" ? "border-2 border-accent" : ""
-              }`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-card-secondary flex items-center justify-center">
-                  <span className="text-xl font-bold">{ticket.waiting_number}</span>
+      <div className="console-main">
+        <div className="console-body">
+          <header className="dashboard-page-header"><div className="dashboard-title-line"><h1>ダッシュボード</h1><time suppressHydrationWarning>{new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(new Date())}</time></div><span className={`dashboard-store-status ${storeStatus === "open" ? "open" : "closed"}`}>{storeStatus === "open" ? "受付中" : "受付停止"}</span></header>
+          {(error || syncError) && <p role="alert" className="form-error">{error || syncError}</p>}
+          <section className="call-workspace">
+            <section className="db-metrics">
+              <article><div><span>待機中</span></div><strong>{waitingCount}<small>組</small></strong><em className="metric-dot amber" /></article>
+              <article><div><span>呼び出し中</span></div><strong>{calledCount}<small>組</small></strong><em className="metric-dot green" /></article>
+              <article><div><span>本日の完了</span></div><strong>{doneCount}<small>組</small></strong><em className="metric-dot blue" /></article>
+            </section>
+            <section className="next-customer-panel" aria-label="次に呼ばれるお客様">
+              {nextTicket ? (
+                <div className="next-customer-data">
+                  <span className="next-number">{nextTicket.waitingNumber}</span>
+                  <div className="next-customer-main"><small>次のお客様</small><b className="next-name">{nextTicket.name} 様</b></div>
+                  <div className="next-customer-meta"><strong className="next-party">{nextTicket.partySize}名様</strong><span className="next-phone">{nextTicket.account.phone_number}</span></div>
                 </div>
-                <div>
-                  <p className="font-medium">{ticket.guest_name}</p>
-                  <p className="text-text-secondary text-sm">
-                    {ticket.party_size}名 · {ticket.wait_time_minutes}分待ち
-                  </p>
-                </div>
-              </div>
+              ) : <p className="next-customer-empty">現在、呼び出し待ちのお客様はいません</p>}
+            </section>
 
-              <div className="flex items-center gap-2">
-                {ticket.status === "called" && (
-                  <>
-                    <button
-                      onClick={() => handleStatusChange(ticket.id, "seated")}
-                      className="px-3 py-1 bg-accent-green text-black rounded-full text-sm"
-                    >
-                      着席
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange(ticket.id, "no_show")}
-                      className="px-3 py-1 bg-error text-white rounded-full text-sm"
-                    >
-                      不在
-                    </button>
-                  </>
-                )}
-                {ticket.status === "waiting" && (
-                  <span className="px-3 py-1 bg-card-secondary rounded-full text-sm text-text-secondary">
-                    待機中
-                  </span>
-                )}
-              </div>
+            <div className="primary-call-area">
+              <button className="db-call-button" onClick={handleCallNext} disabled={!canCallNext}><div><small>{nextTicket ? `${nextTicket.waitingNumber}番 ${nextTicket.name}様を呼び出します` : "待機中のお客様はいません"}</small><b>{actionID === "call-next" ? "呼び出し中…" : "次を呼ぶ"}</b></div></button>
             </div>
-          ))
-        )}
+            <section className="active-customer-screen called-customer-screen">
+              <article className="active-list called-list">
+                <header><div><h2>現在呼び出し中</h2></div><strong>{calledPeople}名・{calledCount}組</strong></header>
+                <div className="active-list-columns"><span>番号</span><span>お客様</span><span>操作</span></div>
+                <div className="active-list-body">
+                  {calledTickets.length ? calledTickets.map((ticket) => <div className="active-customer-row" key={ticket.id}><span className="active-number">{ticket.waitingNumber}</span><div className="active-customer-info"><b>{ticket.name}</b><div><span>{ticket.partySize}名様</span><small>{formatElapsed(ticket)}</small></div></div><button onClick={() => void updateStatus(ticket.id, "done")} disabled={actionID !== null}>到着</button></div>) : <p>現在呼び出し中のお客様はいません</p>}
+                </div>
+              </article>
+            </section>
+          </section>
+
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
