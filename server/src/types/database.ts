@@ -1,6 +1,9 @@
 /**
  * Supabase Database Types
  * supabase gen types typescript で生成した型を配置
+ *
+ * NOTE: 本番スキーマは CHECK 制約で値を絞っており Postgres ENUM は使っていない。
+ * そのため Row の status 系は TS 側のユニオン型で表現する。
  */
 
 export type Json =
@@ -14,148 +17,207 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          id: string;
+          phone_number: string | null;
+          password: string | null;
+        };
+        Insert: {
+          id?: string;
+          phone_number?: string | null;
+          password?: string | null;
+        };
+        Update: {
+          id?: string;
+          phone_number?: string | null;
+          password?: string | null;
+        };
+        Relationships: [];
+      };
       stores: {
         Row: {
           id: string;
+          store_mail: string;
+          password: string;
           name: string;
-          estimated_wait_time_per_group: number;
-          is_accepting: boolean;
-          created_at: string;
-          updated_at: string;
+          /** time without time zone ("HH:MM:SS") */
+          open_time: string;
+          /** time without time zone ("HH:MM:SS") */
+          close_time: string;
+          avg_minutes_per_party: number;
+          /** 採番カウンタの対象営業日 (date) */
+          counter_date: string | null;
+          /** counter_date 時点で発行済みの最終番号 */
+          last_number: number;
+          status: StoreStatus | null;
         };
         Insert: {
           id?: string;
+          store_mail: string;
+          password: string;
           name: string;
-          estimated_wait_time_per_group?: number;
-          is_accepting?: boolean;
-          created_at?: string;
-          updated_at?: string;
+          open_time?: string;
+          close_time?: string;
+          avg_minutes_per_party?: number;
+          counter_date?: string | null;
+          last_number?: number;
+          status?: StoreStatus | null;
         };
         Update: {
           id?: string;
+          store_mail?: string;
+          password?: string;
           name?: string;
-          estimated_wait_time_per_group?: number;
-          is_accepting?: boolean;
-          created_at?: string;
-          updated_at?: string;
+          open_time?: string;
+          close_time?: string;
+          avg_minutes_per_party?: number;
+          counter_date?: string | null;
+          last_number?: number;
+          status?: StoreStatus | null;
         };
-      };
-      guests: {
-        Row: {
-          id: string;
-          device_id: string;
-          name: string;
-          phone: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          device_id: string;
-          name: string;
-          phone?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          device_id?: string;
-          name?: string;
-          phone?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
+        Relationships: [];
       };
       tickets: {
         Row: {
           id: string;
           store_id: string;
-          guest_id: string;
+          account_id: string;
+          /** date */
+          business_date: string;
           waiting_number: number;
-          party_size: number;
+          name: string;
+          party_size: number | null;
           status: TicketStatus;
           created_at: string;
           called_at: string | null;
-          seated_at: string | null;
-          cancelled_at: string | null;
+          /** ゲストの[到着しました]操作時刻。status/確定とは独立 */
+          arrived_at: string | null;
         };
         Insert: {
           id?: string;
           store_id: string;
-          guest_id: string;
+          account_id: string;
+          business_date: string;
           waiting_number: number;
-          party_size?: number;
+          name: string;
+          party_size?: number | null;
           status?: TicketStatus;
           created_at?: string;
           called_at?: string | null;
-          seated_at?: string | null;
-          cancelled_at?: string | null;
+          arrived_at?: string | null;
         };
         Update: {
           id?: string;
           store_id?: string;
-          guest_id?: string;
+          account_id?: string;
+          business_date?: string;
           waiting_number?: number;
-          party_size?: number;
+          name?: string;
+          party_size?: number | null;
           status?: TicketStatus;
           created_at?: string;
           called_at?: string | null;
-          seated_at?: string | null;
-          cancelled_at?: string | null;
+          arrived_at?: string | null;
         };
+        Relationships: [];
       };
-      staff: {
+      ticket_history: {
         Row: {
+          /** 確定元の tickets.id をそのまま引き継ぐ (DEFAULT なし) */
           id: string;
           store_id: string;
-          user_id: string;
-          role: StaffRole;
+          account_id: string;
+          /** date */
+          business_date: string;
+          name: string;
+          party_size: number | null;
+          final_status: FinalStatus;
+          /** tickets.created_at を引き継ぐ */
           created_at: string;
+          finished_at: string;
         };
         Insert: {
-          id?: string;
+          id: string;
           store_id: string;
-          user_id: string;
-          role?: StaffRole;
-          created_at?: string;
+          account_id: string;
+          business_date: string;
+          name: string;
+          party_size?: number | null;
+          final_status: FinalStatus;
+          created_at: string;
+          finished_at?: string;
         };
         Update: {
           id?: string;
           store_id?: string;
-          user_id?: string;
-          role?: StaffRole;
+          account_id?: string;
+          business_date?: string;
+          name?: string;
+          party_size?: number | null;
+          final_status?: FinalStatus;
           created_at?: string;
+          finished_at?: string;
         };
+        Relationships: [];
+      };
+      store_events: {
+        Row: {
+          store_id: string;
+          has_add: boolean;
+          has_remove: boolean;
+          has_update: boolean;
+        };
+        Insert: {
+          store_id: string;
+          has_add?: boolean;
+          has_remove?: boolean;
+          has_update?: boolean;
+        };
+        Update: {
+          store_id?: string;
+          has_add?: boolean;
+          has_remove?: boolean;
+          has_update?: boolean;
+        };
+        Relationships: [];
       };
     };
-    Enums: {
-      ticket_status: TicketStatus;
-      staff_role: StaffRole;
-    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 };
 
-export type TicketStatus =
-  | "waiting"
-  | "called"
-  | "seated"
-  | "no_show"
-  | "cancelled";
+/** tickets.status — 進行中の組のみ。CHECK 制約でこの2値に限定されている */
+export type TicketStatus = "waiting" | "called";
 
-export type StaffRole = "owner" | "manager" | "staff";
+/** ticket_history.final_status — 決着した組。CHECK 制約でこの3値に限定されている */
+export type FinalStatus = "seated" | "no_show" | "cancelled";
+
+/** stores.status — 発券を受け付けるのは "open" のときのみ */
+export type StoreStatus = "open" | "paused" | "closed";
 
 // Helper types
-export type Store = Database["public"]["Tables"]["stores"]["Row"];
-export type Guest = Database["public"]["Tables"]["guests"]["Row"];
-export type Ticket = Database["public"]["Tables"]["tickets"]["Row"];
-export type Staff = Database["public"]["Tables"]["staff"]["Row"];
+// NOTE: API 側 (types/api.ts) の Account / Store / Ticket は camelCase の
+// レスポンス型。混同を避けるため DB の行型は Row 接尾辞で統一する。
+export type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
+export type StoreRow = Database["public"]["Tables"]["stores"]["Row"];
+export type TicketRow = Database["public"]["Tables"]["tickets"]["Row"];
+export type TicketHistoryRow =
+  Database["public"]["Tables"]["ticket_history"]["Row"];
+export type StoreEventsRow =
+  Database["public"]["Tables"]["store_events"]["Row"];
 
+export type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
 export type StoreInsert = Database["public"]["Tables"]["stores"]["Insert"];
-export type GuestInsert = Database["public"]["Tables"]["guests"]["Insert"];
 export type TicketInsert = Database["public"]["Tables"]["tickets"]["Insert"];
-export type StaffInsert = Database["public"]["Tables"]["staff"]["Insert"];
+export type TicketHistoryInsert =
+  Database["public"]["Tables"]["ticket_history"]["Insert"];
 
+export type AccountUpdate = Database["public"]["Tables"]["accounts"]["Update"];
 export type StoreUpdate = Database["public"]["Tables"]["stores"]["Update"];
-export type GuestUpdate = Database["public"]["Tables"]["guests"]["Update"];
 export type TicketUpdate = Database["public"]["Tables"]["tickets"]["Update"];
-export type StaffUpdate = Database["public"]["Tables"]["staff"]["Update"];
+export type TicketHistoryUpdate =
+  Database["public"]["Tables"]["ticket_history"]["Update"];

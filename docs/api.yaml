@@ -1,203 +1,112 @@
 openapi: 3.0.3
 info:
-  title: Magii AirLine API
-  description: 店舗待ち行列管理システムのAPI仕様
-  version: 1.0.0
+  title: Magii AirLine Admin API
+  description: |
+    店舗待ち行列管理システムの **管理画面向け** API 仕様。
+
+    ## 設計方針
+
+    - **フィールド名は camelCase**。DB は snake_case なので、変換は
+      `server/src/utils/serialize.ts` に集約している。
+    - **操作系はすべて `{ success: boolean }` を返す**。更新後の実体は返さないので、
+      クライアントは必要に応じて `getTickets` を取り直す。
+      失敗理由はボディに載せず、サーバログにのみ残す。
+    - **HTTP ステータスは原則 200**。業務的な失敗も `success: false` の 200 で表す
+      （ボディで区別しない方針なので、ステータスだけ分けても一貫しないため）。
+      500 はサーバ側の想定外エラーのみ。
+
+    ## 変更通知の仕組み
+
+    管理画面は `getEvent` をポーリングし、フラグが立っていれば `getTickets` を
+    取り直す。確認したら `resetEvent` で寝かせる。
+
+    | フラグ | 立つ操作 |
+    |---|---|
+    | `add` | `guest/createTicket` |
+    | `remove` | `finishTicket` / `guest/cancelTicket` |
+    | `update` | `callNext` / `changeTicketState` / 店舗設定の変更4種 / `guest/arrive` |
+
+    ⚠️ 管理画面を複数台で開くと、片方が `resetEvent` した瞬間にもう片方が変更を
+    取りこぼす。1台運用を前提とした設計。
+
+    ## データモデルの前提
+
+    進行中の組と決着した組はテーブルが分かれている。
+
+    - `tickets` … 進行中。`status` は `waiting` / `called` の2値のみ
+    - `ticket_history` … 決着済み。`finalState` は `seated` / `no_show` / `cancelled`
+
+    そのため確定は *ステータス更新* ではなく、`tickets` の行を同じ id のまま
+    `ticket_history` へ移す `finishTicket` になる。
+    `changeTicketState` は `waiting` ↔ `called` の往復専用。
+
+    ## ゲスト向け API
+
+    来店客（アプリ側）向け。`accounts.phoneNumber` + パスワードで `register`/`login` する。
+    どちらも成功時は `accountID` を返し、以降の `createTicket`/`getMyTicket` はその
+    `accountID` を使う（`register` は電話番号が既に登録済みなら `success: false` になるので
+    その場合は `login` を使う）。
+
+    「呼ばれたか / 取り消されたか」を別途ポーリングするAPIは用意していない。
+    ゲストが追跡するチケットは常に1件なので、`getMyTicket` を直接ポーリングすれば
+    `ticket.status` で waiting/called を判定でき、店舗側の操作で決着した場合は
+    `ticket: null` と `finalStatus` で通知される。
+
+    `arrive`（[到着しました]）は `tickets.arrivedAt` に時刻を記録するだけで、
+    `status` は変えない。着席確定 (`seated`) は引き続き店舗側の `finishTicket` が行う
+    （飲食店の席の準備を想定した設計）。
+
+    ## 認証
+
+    **実装していない。** `login`（admin/guestとも）は照合するだけでトークンを発行しない
+    ため、以降のリクエストは `storeID` さえ分かれば誰でも呼べる。ゲストAPIも同様に
+    `accountID` / `ticketID` さえ分かれば誰でも呼べる。公開前に必ず塞ぐこと。
+  version: 4.0.0
 
 servers:
-  - url: https://your-project.supabase.co/functions/v1
-    description: Supabase Edge Functions
+  - url: http://127.0.0.1:8787
+    description: ローカル開発サーバ (server/src/index.ts, `npm run dev`)
 
 tags:
-  - name: Guest
-    description: ゲスト（来店客）向けAPI
   - name: Admin
     description: 管理者（店舗スタッフ）向けAPI
+  - name: Guest
+    description: 来店客（アプリ）向けAPI
 
 paths:
-  # ============================================================
-  # Guest Endpoints
-  # ============================================================
-  /auth/registerUser:
-    post:
-      tags: [Guest]
-      summary: ユーザー登録
-      description: デバイスIDで新規ゲストを登録、または既存ゲストを更新
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterUserRequest'
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RegisterUserResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /reservation:
+  /admin/getTickets:
     get:
-      tags: [Guest]
-      summary: 予約状況取得
-      description: ゲストの現在の予約状況を取得
-      parameters:
-        - name: shop_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: user_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetReservationResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-    post:
-      tags: [Guest]
-      summary: 予約作成
-      description: 新しい待ち行列チケットを発行
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateReservationRequest'
-      responses:
-        '201':
-          description: 作成成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateReservationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          description: 既に待ち行列に並んでいる
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-
-  /reservation/{id}/cancel:
-    patch:
-      tags: [Guest]
-      summary: 予約キャンセル
-      description: 待ち行列から離脱
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /reservation/{id}/arrive:
-    patch:
-      tags: [Guest]
-      summary: 到着報告
-      description: 呼び出し後に到着を報告
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /waiting:
-    get:
-      tags: [Guest]
-      summary: 待機状況取得
-      description: リアルタイム購読用の待機状況取得
-      parameters:
-        - name: shop_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: user_id
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetWaitingResponse'
-
-  # ============================================================
-  # Admin Endpoints
-  # ============================================================
-  /auth/registerShop:
-    post:
       tags: [Admin]
-      summary: 店舗登録
-      description: 新規店舗とオーナーアカウントを作成
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterShopRequest'
+      summary: チケット一覧取得
+      description: |
+        当日（`businessDate`）の待ち行列を取得する。
+        並び順は `called` が先、その後 `waitingNumber` の昇順。
+
+        `tickets` に残っている行はすべて進行中なので、確定済みのチケットは含まれない。
+
+        失敗時（店舗が無い・入力不正・DB エラー）は空配列を返す。
+      x-implemented: true
+      parameters:
+        - $ref: '#/components/parameters/StoreIDQuery'
       responses:
-        '201':
-          description: 作成成功
+        '200':
+          description: 成功（該当なし・失敗いずれも空配列）
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisterShopResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                $ref: '#/components/schemas/GetTicketsResponse'
 
-  /auth/login:
+  /admin/login:
     post:
       tags: [Admin]
       summary: ログイン
-      description: 管理者認証
+      description: |
+        `storeID` で `stores` を引き、`stores.password` を直接照合する
+        （パスワードは scrypt ハッシュで保存されている前提）。
+
+        **トークンは発行しない。** 成功しても以降のリクエストが認証済みに
+        なるわけではない。
+      x-implemented: true
       requestBody:
         required: true
         content:
@@ -206,510 +115,792 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '401':
-          description: 認証失敗
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
+          $ref: '#/components/responses/Success'
 
-  /admin/dashboard:
-    get:
+  /admin/register:
+    post:
       tags: [Admin]
-      summary: ダッシュボード取得
-      description: 店舗の待ち行列状況と統計を取得
-      security:
-        - BearerAuth: []
+      summary: 店舗の新規作成
+      description: |
+        `stores` 行を作る唯一の手段。`email`（`store_mail`）の重複は `success: false`。
+
+        `openTime`/`closeTime`/`avgMinutesPerParty`/`counterDate`/`lastNumber`/`status`
+        は省略可能で、省略時はDBのデフォルト値が使われる。
+
+        ⚠️ 設計書上のレスポンスは `{ success: boolean }` のみだが、それだと登録後に
+        `storeID` を知る手段が無く `login` できないため、実用上の必要性から
+        `storeID` も返すようにしている。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRegisterRequest'
       responses:
         '200':
-          description: 成功
+          description: '成功時は storeID を含む。失敗時は storeID: null'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DashboardResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: '#/components/schemas/AdminRegisterResponse'
 
-  /admin/call-next:
+  /admin/callNext:
     post:
       tags: [Admin]
       summary: 次を呼ぶ
-      description: 待ち行列の先頭を呼び出し
-      security:
-        - BearerAuth: []
+      description: |
+        当日の `waiting` のうち `waitingNumber` が最小のチケットを `called` にし、
+        `calledAt` を記録する。
+
+        更新条件に `status = 'waiting'` を含めているため、複数端末から同時に
+        押しても同じ組を二重に呼び出すことはない（負けた側は `success: false`）。
+
+        待ち行列が空のときも `success: false`。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/getEvent:
+    get:
+      tags: [Admin]
+      summary: イベントの取得
+      description: |
+        前回の `resetEvent` 以降に変更があったかを返す。ポーリング用。
+
+        行が無い店舗は「イベント無し」として全 `false` を返す。
+        入力不正・DB エラーのときも全 `false`。
+      x-implemented: true
+      parameters:
+        - $ref: '#/components/parameters/StoreIDQuery'
       responses:
         '200':
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CallNextResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                $ref: '#/components/schemas/GetEventResponse'
 
-  /admin/tickets/{id}/status:
-    patch:
+  /admin/resetEvent:
+    post:
       tags: [Admin]
-      summary: チケット状態更新
-      description: チケットのステータスを変更
-      security:
-        - BearerAuth: []
+      summary: イベントのリセット
+      description: フロントでイベントを確認したあと、フラグを全て false に戻す。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/changeTicketState:
+    post:
+      tags: [Admin]
+      summary: チケットの状態変更
+      description: |
+        `waiting` ↔ `called` の往復のみ。
+
+        - `called` にすると `calledAt` に現在時刻が入る
+        - `waiting` に戻すと `calledAt` は `null` に戻る
+        - 既に同じ状態の場合は `success: false`
+
+        `seated` / `no_show` / `cancelled` は **`finishTicket`** の担当。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeTicketStateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/finishTicket:
+    post:
+      tags: [Admin]
+      summary: チケットの確定
+      description: |
+        チケットを確定させる。`tickets` の行を同じ id のまま `ticket_history` へ
+        移し、`tickets` から削除する。`createdAt` は引き継がれ、
+        `finishedAt` に確定時刻が入る。
+
+        確定済みのチケットを再度指定した場合は `success: false`
+        （既に `tickets` から消えているため）。
+
+        `remove` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishTicketRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/changeAvgMinutesPerParty:
+    post:
+      tags: [Admin]
+      summary: 平均待ち時間の変更
+      description: 1組あたりの想定所要時間（分）を変更する。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeAvgMinutesPerPartyRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/changeOpenTime:
+    post:
+      tags: [Admin]
+      summary: 開店時間の変更
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeTimeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/changeCloseTime:
+    post:
+      tags: [Admin]
+      summary: 閉店時間の変更
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeTimeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /admin/changeStoreState:
+    post:
+      tags: [Admin]
+      summary: 店のステートの変更
+      description: |
+        `open` / `paused` / `closed` のいずれかに変更する。
+
+        発券を受け付けるのは `open` のときのみ（発券はゲスト API の担当だが、
+        DB 上の意味としてはこの通り）。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeStoreStateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /guest/register:
+    post:
+      tags: [Guest]
+      summary: ユーザー登録（電話番号+パスワード）
+      description: |
+        `phone`（`accounts.phoneNumber`）+ `password` でアカウントを新規作成する。
+        電話番号は一意制約があるため、既に登録済みなら `success: false` になる
+        （その場合は `login` を使う）。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestRegisterRequest'
+      responses:
+        '200':
+          description: '成功時は accountID を含む。失敗時は accountID: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestAuthResponse'
+
+  /guest/login:
+    post:
+      tags: [Guest]
+      summary: ログイン（電話番号+パスワード）
+      description: |
+        `phone` + `password` で既存アカウントを認証する。`register` と対称。
+        以降の `createTicket`/`getMyTicket` はここで得た `accountID` を使う。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestLoginRequest'
+      responses:
+        '200':
+          description: '成功時は accountID を含む。失敗時は accountID: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestAuthResponse'
+
+  /guest/createTicket:
+    post:
+      tags: [Guest]
+      summary: 発券（予約作成）
+      description: |
+        `stores.status === 'open'` のときのみ受け付ける。
+
+        同一アカウント・同一店舗・当日のアクティブなチケット（waiting/called）が
+        既にあれば、新規作成せずそれをそのまま返す（二重タップ・リトライへの耐性）。
+
+        採番は `callNext` と同様 compare-and-swap 方式で、同時発券でも欠番・重複が
+        起きない。`add` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '200':
+          description: '成功時は ticket を含む。失敗時は ticket: null'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTicketResponse'
+
+  /guest/getMyTicket:
+    get:
+      tags: [Guest]
+      summary: 自分のチケット取得（ポーリング用）
+      description: |
+        当日の自分のチケットを取得する。ゲスト側のポーリングはこのAPI 1本に統合しており、
+        「呼ばれたか/取り消されたか」を別途通知するAPIは無い。
+
+        - チケットが進行中（waiting/called）なら `ticket` に入る。`status` で判定する
+        - 店舗側の操作（`finishTicket`）で決着した場合は `ticket: null` になり、
+          代わりに当日分の `finalStatus`（seated/no_show/cancelled）が入る
+        - 当日まだ何も無ければ両方 `null`
+      x-implemented: true
       parameters:
-        - name: id
-          in: path
+        - name: accountID
+          in: query
           required: true
           schema:
             type: string
             format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateTicketStatusRequest'
+        - $ref: '#/components/parameters/StoreIDQuery'
       responses:
         '200':
-          description: 成功
+          description: 成功（該当なし・失敗いずれも ticket:null, finalStatus:null）
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateTicketStatusResponse'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: '#/components/schemas/GetMyTicketResponse'
 
-  /admin/store/settings:
-    patch:
-      tags: [Admin]
-      summary: 店舗設定更新
-      description: 店舗の設定を変更
-      security:
-        - BearerAuth: []
+  /guest/cancelTicket:
+    post:
+      tags: [Guest]
+      summary: キャンセル
+      description: |
+        `waiting` の間のみキャンセル可能（状態遷移図参照）。`called`（呼び出し済み）後は
+        `success: false` になる。店舗側の `finishTicket`（no_show 等）に委ねる。
+
+        `remove` イベントを立てる。
+      x-implemented: true
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateStoreSettingsRequest'
+              $ref: '#/components/schemas/TicketIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /guest/arrive:
+    post:
+      tags: [Guest]
+      summary: 到着報告
+      description: |
+        [到着しました] ボタン。`tickets.arrivedAt` に現在時刻を記録するだけで、
+        `status` は変えない。着席確定 (`seated`) は引き続き店舗側の `finishTicket` が行う
+        （飲食店の席の準備を想定した設計。要件定義書「未決定事項5」への対応）。
+
+        `update` イベントを立てる。
+      x-implemented: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketIDBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /guest/getStore:
+    get:
+      tags: [Guest]
+      summary: 店舗情報取得（QR読み取り後の表示用）
+      description: |
+        失敗時（店舗が無い・入力不正・DBエラー）は `store: null` とゼロ値を返す。
+
+        `estimatedWaitMinutes` は `waitingCount * avgMinutesPerParty` の単純計算。
+      x-implemented: true
+      parameters:
+        - $ref: '#/components/parameters/StoreIDQuery'
+      responses:
+        '200':
+          description: 成功（失敗時も200、ゼロ値）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetStoreResponse'
+
+  /health:
+    get:
+      tags: [Admin]
+      summary: ヘルスチェック
+      description: DB に触らないので、サーバの疎通確認だけに使える。
+      x-implemented: true
       responses:
         '200':
           description: 成功
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateStoreSettingsResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                type: object
+                properties:
+                  ok:
+                    type: boolean
 
 components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+  parameters:
+    StoreIDQuery:
+      name: storeID
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   responses:
-    BadRequest:
-      description: リクエスト不正
+    Success:
+      description: |
+        処理の成否。失敗理由はボディに含まれない（サーバログを参照）。
+        業務的な失敗も 200 で返る。
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-    Unauthorized:
-      description: 認証エラー
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-    NotFound:
-      description: リソースが見つからない
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: '#/components/schemas/SuccessResponse'
 
   schemas:
-    # ============================================================
-    # Common
-    # ============================================================
-    ApiError:
+    SuccessResponse:
       type: object
       required:
-        - error
+        - success
       properties:
-        data:
-          type: 'null'
-        error:
-          type: object
-          required:
-            - code
-            - message
-          properties:
-            code:
-              type: string
-            message:
-              type: string
+        success:
+          type: boolean
 
+    # ============================================================
+    # Entities
+    # ============================================================
     TicketStatus:
       type: string
+      description: '`tickets.status`。進行中の組のみ。CHECK 制約でこの2値に限定'
       enum:
         - waiting
         - called
+
+    FinalStatus:
+      type: string
+      description: '`ticket_history.final_status`。CHECK 制約でこの3値に限定'
+      enum:
         - seated
         - no_show
         - cancelled
 
-    # ============================================================
-    # Guest Schemas
-    # ============================================================
-    RegisterUserRequest:
+    StoreStatus:
+      type: string
+      description: '`stores.status`。DB 上は nullable で、`null` は受付不可として扱う'
+      nullable: true
+      enum:
+        - open
+        - paused
+        - closed
+
+    Account:
       type: object
-      required:
-        - device_id
-        - name
+      description: パスワードは含めない
       properties:
-        device_id:
+        id:
           type: string
+          format: uuid
+        phoneNumber:
+          type: string
+          nullable: true
+
+    Store:
+      type: object
+      description: |
+        `counterDate` / `lastNumber` は発券の採番に使う内部状態で、ゲスト側では使わない。
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          description: '`stores.store_mail`。ログインに使う店舗のメールアドレス'
         name:
           type: string
-          maxLength: 100
-        phone:
+        openTime:
           type: string
-
-    RegisterUserResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                device_id:
-                  type: string
-                name:
-                  type: string
-                phone:
-                  type: string
-                  nullable: true
-        error:
-          type: 'null'
-
-    CreateReservationRequest:
-      type: object
-      required:
-        - store_id
-        - guest_id
-        - party_size
-      properties:
-        store_id:
+          example: '10:00:00'
+        closeTime:
           type: string
-          format: uuid
-        guest_id:
-          type: string
-          format: uuid
-        party_size:
+          example: '21:00:00'
+        avgMinutesPerParty:
           type: integer
-          minimum: 1
-          maximum: 20
+        counterDate:
+          type: string
+          format: date
+          nullable: true
+        lastNumber:
+          type: integer
+        status:
+          $ref: '#/components/schemas/StoreStatus'
 
-    CreateReservationResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              $ref: '#/components/schemas/Reservation'
-        error:
-          type: 'null'
-
-    GetReservationResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              $ref: '#/components/schemas/Reservation'
-              nullable: true
-        error:
-          type: 'null'
-
-    GetWaitingResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            reservation:
-              type: object
-              nullable: true
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                party_size:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-                groups_ahead:
-                  type: integer
-                estimated_wait_minutes:
-                  type: integer
-        error:
-          type: 'null'
-
-    Reservation:
+    Ticket:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        waiting_number:
+        account:
+          $ref: '#/components/schemas/Account'
+        store:
+          $ref: '#/components/schemas/Store'
+        businessDate:
+          type: string
+          format: date
+        waitingNumber:
           type: integer
-        party_size:
+        name:
+          type: string
+          description: '`tickets.name`。`accounts` に氏名は無いため発券時に受け取った値'
+        partySize:
           type: integer
+          nullable: true
         status:
           $ref: '#/components/schemas/TicketStatus'
-        groups_ahead:
-          type: integer
-        estimated_wait_minutes:
-          type: integer
-        created_at:
+        createdAt:
           type: string
           format: date-time
-        called_at:
+          description: 管理画面が待ち時間を算出するために使う
+        calledAt:
           type: string
           format: date-time
           nullable: true
+        arrivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: '`arrive`（[到着しました]）を押した時刻。status/確定とは独立'
 
     # ============================================================
-    # Admin Schemas
+    # Requests / Responses
     # ============================================================
-    RegisterShopRequest:
+    GetTicketsResponse:
       type: object
       required:
-        - name
-        - email
-        - password
+        - tickets
       properties:
-        name:
-          type: string
-          maxLength: 100
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 8
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
 
-    RegisterShopResponse:
+    GetEventResponse:
       type: object
+      required:
+        - add
+        - remove
+        - update
       properties:
-        data:
-          type: object
-          properties:
-            shop:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                email:
-                  type: string
-                  format: email
-        error:
-          type: 'null'
+        add:
+          type: boolean
+        remove:
+          type: boolean
+        update:
+          type: boolean
+
+    StoreIDBody:
+      type: object
+      required:
+        - storeID
+      properties:
+        storeID:
+          type: string
+          format: uuid
 
     LoginRequest:
       type: object
       required:
+        - storeID
+        - password
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        password:
+          type: string
+
+    AdminRegisterRequest:
+      type: object
+      required:
         - email
+        - name
         - password
       properties:
         email:
           type: string
           format: email
-        password:
-          type: string
-
-    LoginResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            access_token:
-              type: string
-            refresh_token:
-              type: string
-            user:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                email:
-                  type: string
-                  format: email
-        error:
-          type: 'null'
-
-    DashboardResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            store:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-                is_accepting:
-                  type: boolean
-            stats:
-              type: object
-              properties:
-                waiting_count:
-                  type: integer
-                called_count:
-                  type: integer
-                seated_count:
-                  type: integer
-                no_show_count:
-                  type: integer
-                cancelled_count:
-                  type: integer
-            queue:
-              type: array
-              items:
-                $ref: '#/components/schemas/QueueItem'
-        error:
-          type: 'null'
-
-    QueueItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        waiting_number:
-          type: integer
-        guest_name:
-          type: string
-        party_size:
-          type: integer
-        status:
-          $ref: '#/components/schemas/TicketStatus'
-        wait_time_minutes:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-
-    CallNextResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            ticket:
-              type: object
-              nullable: true
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                guest_name:
-                  type: string
-                party_size:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-        error:
-          type: 'null'
-
-    UpdateTicketStatusRequest:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          $ref: '#/components/schemas/TicketStatus'
-
-    UpdateTicketStatusResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            ticket:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                waiting_number:
-                  type: integer
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-        error:
-          type: 'null'
-
-    UpdateStoreSettingsRequest:
-      type: object
-      properties:
         name:
           type: string
-          maxLength: 100
-        estimated_wait_time_per_group:
+        password:
+          type: string
+          minLength: 8
+        openTime:
+          type: string
+          example: '10:00:00'
+        closeTime:
+          type: string
+          example: '21:00:00'
+        avgMinutesPerParty:
           type: integer
           minimum: 1
           maximum: 120
-        is_accepting:
-          type: boolean
+        counterDate:
+          type: string
+          format: date
+          nullable: true
+        lastNumber:
+          type: integer
+          minimum: 0
+        status:
+          $ref: '#/components/schemas/StoreStatus'
 
-    UpdateStoreSettingsResponse:
+    AdminRegisterResponse:
       type: object
+      required:
+        - success
+        - storeID
       properties:
-        data:
-          type: object
-          properties:
-            store:
-              type: object
-              properties:
-                id:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-                estimated_wait_time_per_group:
-                  type: integer
-                is_accepting:
-                  type: boolean
-        error:
-          type: 'null'
+        success:
+          type: boolean
+        storeID:
+          type: string
+          format: uuid
+          nullable: true
+
+    ChangeTicketStateRequest:
+      type: object
+      required:
+        - ticketID
+        - newState
+      properties:
+        ticketID:
+          type: string
+          format: uuid
+        newState:
+          $ref: '#/components/schemas/TicketStatus'
+
+    FinishTicketRequest:
+      type: object
+      required:
+        - ticketID
+        - finalState
+      properties:
+        ticketID:
+          type: string
+          format: uuid
+        finalState:
+          $ref: '#/components/schemas/FinalStatus'
+
+    ChangeAvgMinutesPerPartyRequest:
+      type: object
+      required:
+        - storeID
+        - newValue
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        newValue:
+          type: integer
+          minimum: 1
+          maximum: 120
+
+    ChangeTimeRequest:
+      type: object
+      required:
+        - storeID
+        - newValue
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        newValue:
+          type: string
+          description: '`HH:MM:SS`。`HH:MM` も受け付け、秒を補って保存する'
+          example: '09:30:00'
+
+    ChangeStoreStateRequest:
+      type: object
+      required:
+        - storeID
+        - newState
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        newState:
+          type: string
+          enum:
+            - open
+            - paused
+            - closed
+
+    # ============================================================
+    # Guest Requests / Responses
+    # ============================================================
+    TicketIDBody:
+      type: object
+      required:
+        - ticketID
+      properties:
+        ticketID:
+          type: string
+          format: uuid
+
+    GuestRegisterRequest:
+      type: object
+      required:
+        - phone
+        - password
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 8
+
+    GuestLoginRequest:
+      type: object
+      required:
+        - phone
+        - password
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+
+    GuestAuthResponse:
+      type: object
+      required:
+        - success
+        - accountID
+      properties:
+        success:
+          type: boolean
+        accountID:
+          type: string
+          format: uuid
+          nullable: true
+
+    CreateTicketRequest:
+      type: object
+      required:
+        - storeID
+        - accountID
+        - name
+      properties:
+        storeID:
+          type: string
+          format: uuid
+        accountID:
+          type: string
+          format: uuid
+        name:
+          type: string
+        partySize:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    CreateTicketResponse:
+      type: object
+      required:
+        - success
+        - ticket
+      properties:
+        success:
+          type: boolean
+        ticket:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Ticket'
+
+    GetMyTicketResponse:
+      type: object
+      required:
+        - ticket
+        - finalStatus
+      properties:
+        ticket:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Ticket'
+        finalStatus:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/FinalStatus'
+
+    GetStoreResponse:
+      type: object
+      required:
+        - store
+        - waitingCount
+        - estimatedWaitMinutes
+      properties:
+        store:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Store'
+        waitingCount:
+          type: integer
+        estimatedWaitMinutes:
+          type: integer
