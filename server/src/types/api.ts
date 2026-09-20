@@ -1,211 +1,64 @@
 /**
- * API Request/Response Types
+ * API の DTO
+ *
+ * DB は snake_case、API は camelCase。変換は serialize/ に集約する。
+ *
+ * ただし仕様が snake_case を指定しているフィールドはそのまま従う:
+ *   Account.phone_number
+ *   Ticket.business_date / called_at / updated_at
+ * （仕様書の型定義をそのまま写したもの。勝手に camelCase へ直さないこと）
  */
 
-import type { TicketStatus } from "./database.js";
+import type { StoreStatus, TicketStatus } from "../domain/transitions.js";
 
-// ============================================================
-// Common
-// ============================================================
-
-export interface ApiResponse<T> {
-  data: T;
-  error: null;
+export interface Account {
+  id: string;
+  phone_number: string;
 }
 
-export interface ApiError {
-  data: null;
-  error: {
-    code: string;
-    message: string;
-  };
-}
-
-export type ApiResult<T> = ApiResponse<T> | ApiError;
-
-// ============================================================
-// Guest Endpoints
-// ============================================================
-
-/** POST /auth/registerUser */
-export interface RegisterUserRequest {
-  device_id: string;
-  name: string;
-  phone?: string;
-}
-
-export interface RegisterUserResponse {
-  user: {
-    id: string;
-    device_id: string;
-    name: string;
-    phone: string | null;
-  };
-}
-
-/** GET /reservation */
-export interface GetReservationRequest {
-  shop_id: string;
-  user_id: string;
-}
-
-export interface GetReservationResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-    created_at: string;
-    called_at: string | null;
-  } | null;
-}
-
-/** POST /reservation */
-export interface CreateReservationRequest {
-  store_id: string;
-  guest_id: string;
-  party_size: number;
-}
-
-export interface CreateReservationResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-    created_at: string;
-  };
-}
-
-/** PATCH /reservation/:id/cancel */
-export interface CancelReservationResponse {
-  success: boolean;
-}
-
-/** PATCH /reservation/:id/arrive */
-export interface ArriveReservationResponse {
-  success: boolean;
-}
-
-/** GET /waiting */
-export interface GetWaitingRequest {
-  shop_id: string;
-  user_id: string;
-}
-
-export interface GetWaitingResponse {
-  reservation: {
-    id: string;
-    waiting_number: number;
-    party_size: number;
-    status: TicketStatus;
-    groups_ahead: number;
-    estimated_wait_minutes: number;
-  } | null;
-}
-
-// ============================================================
-// Admin Endpoints
-// ============================================================
-
-/** POST /auth/registerShop */
-export interface RegisterShopRequest {
-  name: string;
+/** 管理側に返す店舗。email / counterDate / lastNumber を含む */
+export interface AdminStore {
+  id: string;
   email: string;
-  password: string;
+  name: string;
+  openTime: string;
+  closeTime: string;
+  avgMinutesPerParty: number;
+  counterDate: string;
+  lastNumber: number;
+  status: StoreStatus;
 }
 
-export interface RegisterShopResponse {
-  shop: {
-    id: string;
-    name: string;
-  };
-  user: {
-    id: string;
-    email: string;
-  };
+/** お客様側に返す店舗。email / counterDate / lastNumber は返さない */
+export interface CustomerStore {
+  id: string;
+  name: string;
+  openTime: string;
+  closeTime: string;
+  avgMinutesPerParty: number;
+  status: StoreStatus;
 }
 
-/** POST /auth/login */
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
+export type Store = AdminStore | CustomerStore;
 
-export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-  user: {
-    id: string;
-    email: string;
-  };
-}
-
-/** GET /admin/dashboard */
-export interface DashboardResponse {
-  store: {
-    id: string;
-    name: string;
-    is_accepting: boolean;
-  };
-  stats: {
-    waiting_count: number;
-    called_count: number;
-    seated_count: number;
-    no_show_count: number;
-    cancelled_count: number;
-  };
-  queue: Array<{
-    id: string;
-    waiting_number: number;
-    guest_name: string;
-    party_size: number;
-    status: TicketStatus;
-    wait_time_minutes: number;
-    created_at: string;
-  }>;
-}
-
-/** POST /admin/call-next */
-export interface CallNextResponse {
-  ticket: {
-    id: string;
-    waiting_number: number;
-    guest_name: string;
-    party_size: number;
-    status: TicketStatus;
-  } | null;
-}
-
-/** PATCH /admin/tickets/:id/status */
-export interface UpdateTicketStatusRequest {
+export interface Ticket<S extends Store = Store> {
+  id: string;
+  account: Account;
+  store: S;
+  business_date: string;
+  waitingNumber: number;
+  name: string;
+  partySize: number;
   status: TicketStatus;
+  called_at: string | null;
+  updated_at: string;
 }
 
-export interface UpdateTicketStatusResponse {
-  ticket: {
-    id: string;
-    waiting_number: number;
-    status: TicketStatus;
-  };
-}
+export type AdminTicket = Ticket<AdminStore>;
+export type CustomerTicket = Ticket<CustomerStore>;
 
-/** PATCH /admin/store/settings */
-export interface UpdateStoreSettingsRequest {
-  name?: string;
-  estimated_wait_time_per_group?: number;
-  is_accepting?: boolean;
-}
-
-export interface UpdateStoreSettingsResponse {
-  store: {
-    id: string;
-    name: string;
-    estimated_wait_time_per_group: number;
-    is_accepting: boolean;
-  };
+export interface ErrorBody {
+  success: false;
+  code: string;
+  message: string;
 }
