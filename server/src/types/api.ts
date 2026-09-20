@@ -1,145 +1,64 @@
 /**
- * API Request/Response Types
+ * API の DTO
  *
- * DB は snake_case、API は camelCase。変換は utils/serialize.ts に集約する。
+ * DB は snake_case、API は camelCase。変換は serialize/ に集約する。
+ *
+ * ただし仕様が snake_case を指定しているフィールドはそのまま従う:
+ *   Account.phone_number
+ *   Ticket.business_date / called_at / updated_at
+ * （仕様書の型定義をそのまま写したもの。勝手に camelCase へ直さないこと）
  */
 
-import type {
-  FinalStatus,
-  StoreStatus,
-  TicketStatus,
-} from "./database.js";
-
-// ============================================================
-// Common
-// ============================================================
-
-/**
- * 操作系エンドポイントの共通レスポンス。
- * 設計メモの方針により、失敗理由はボディに含めない（サーバログには残す）。
- */
-export interface SuccessResponse {
-  success: boolean;
-}
-
-// ============================================================
-// Entities
-// ============================================================
+import type { StoreStatus, TicketStatus } from "../domain/transitions.js";
 
 export interface Account {
   id: string;
-  phoneNumber: string | null;
+  phone_number: string;
 }
 
-export interface Store {
+/** 管理側に返す店舗。email / counterDate / lastNumber を含む */
+export interface AdminStore {
   id: string;
-  ownerID: string;
+  email: string;
   name: string;
-  /** "HH:MM:SS" */
   openTime: string;
-  /** "HH:MM:SS" */
   closeTime: string;
   avgMinutesPerParty: number;
-  /** 採番カウンタの対象営業日 "YYYY-MM-DD" */
-  counterDate: string | null;
+  counterDate: string;
   lastNumber: number;
-  status: StoreStatus | null;
+  status: StoreStatus;
 }
 
-export interface Ticket {
+/** お客様側に返す店舗。email / counterDate / lastNumber は返さない */
+export interface CustomerStore {
+  id: string;
+  name: string;
+  openTime: string;
+  closeTime: string;
+  avgMinutesPerParty: number;
+  status: StoreStatus;
+}
+
+export type Store = AdminStore | CustomerStore;
+
+export interface Ticket<S extends Store = Store> {
   id: string;
   account: Account;
-  /** 設計メモの `store: Store` から変更。一覧で店舗情報が件数分重複するため */
-  storeID: string;
-  /** "YYYY-MM-DD" */
-  businessDate: string;
+  store: S;
+  business_date: string;
   waitingNumber: number;
   name: string;
-  partySize: number | null;
+  partySize: number;
   status: TicketStatus;
-  /** 管理画面が待ち時間を算出するために必要（設計メモには無い追加分） */
-  createdAt: string;
-  calledAt: string | null;
+  called_at: string | null;
+  updated_at: string;
 }
 
-// ============================================================
-// Admin Endpoints
-// ============================================================
+export type AdminTicket = Ticket<AdminStore>;
+export type CustomerTicket = Ticket<CustomerStore>;
 
-/** GET /admin/getTickets */
-export interface GetTicketsQuery {
-  storeID: string;
-}
-
-export interface GetTicketsResponse {
-  tickets: Ticket[];
-}
-
-/** POST /admin/login */
-export interface LoginRequest {
-  storeID: string;
-  password: string;
-}
-
-/** POST /admin/callNext */
-export interface CallNextRequest {
-  storeID: string;
-}
-
-/** GET /admin/getEvent */
-export interface GetEventQuery {
-  storeID: string;
-}
-
-export interface GetEventResponse {
-  add: boolean;
-  remove: boolean;
-  update: boolean;
-}
-
-/** POST /admin/resetEvent */
-export interface ResetEventRequest {
-  storeID: string;
-}
-
-/** POST /admin/changeTicketState — waiting / called の往復のみ */
-export interface ChangeTicketStateRequest {
-  ticketID: string;
-  newState: TicketStatus;
-}
-
-/**
- * POST /admin/finishTicket
- * tickets の CHECK 制約が waiting/called しか許さないため、
- * 確定は ticket_history への移送になる。
- */
-export interface FinishTicketRequest {
-  ticketID: string;
-  finalState: FinalStatus;
-}
-
-/** POST /admin/changeAvgMinutesPerParty */
-export interface ChangeAvgMinutesPerPartyRequest {
-  storeID: string;
-  newValue: number;
-}
-
-/** POST /admin/changeOpenTime */
-export interface ChangeOpenTimeRequest {
-  storeID: string;
-  /** "HH:MM:SS" */
-  newValue: string;
-}
-
-/** POST /admin/changeCloseTime */
-export interface ChangeCloseTimeRequest {
-  storeID: string;
-  /** "HH:MM:SS" */
-  newValue: string;
-}
-
-/** POST /admin/changeStoreState */
-export interface ChangeStoreStateRequest {
-  storeID: string;
-  newState: StoreStatus;
+export interface ErrorBody {
+  success: false;
+  code: string;
+  message: string;
 }
