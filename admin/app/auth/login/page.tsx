@@ -23,10 +23,12 @@ export default function LoginPage() {
     try {
       const result = await login({ email: email.trim(), password });
       if (!result.success) throw new Error(result.message);
+      if (!result.storeID) throw new Error("ログイン結果に店舗IDがありません");
       try {
+        sessionStorage.setItem("magii-admin-store-id", result.storeID);
         sessionStorage.setItem("magii-admin-email", email.trim());
       } catch {
-        // Storageが無効でもログイン後の画面遷移は止めない。
+        throw new Error("店舗IDを保存できませんでした");
       }
       router.replace("/dashboard");
     } catch (error) {

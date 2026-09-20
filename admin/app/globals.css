@@ -523,3 +523,15 @@ body .dashboard-console .db-select { font-size:17px; }
 @media (max-width:480px) { .field-grid,.status-options { grid-template-columns:1fr; }.summary-grid { gap:10px; }.summary-card { padding:18px; min-height:130px; }.summary-card strong { font-size:42px; }.ticket-card { padding:15px 12px; }.logout-link,.store-chip { display:none; }.settings-card { padding:20px; }.settings-fields,.number-field,.field-help,.status-options { margin-left:0; padding-left:0; }.settings-content { width:min(100% - 28px,760px); padding-top:32px; } }
 @media (max-width:900px) { .admin-console { grid-template-columns:72px minmax(0,1fr); }.console-sidebar { padding:18px 10px; }.console-logo { justify-content:center; padding:0 0 20px; }.console-logo > div:last-child,.console-nav a:not(.active) { font-size:0; }.console-nav a { justify-content:center; padding:12px 8px; }.console-nav a span { font-size:15px; }.console-nav a.active { font-size:0; }.sidebar-account > div,.sidebar-account > a { display:none; }.sidebar-account { display:flex; justify-content:center; padding:14px 0 0; }.db-metrics { grid-template-columns:repeat(3,1fr); }.db-call-button { grid-column:1/-1; min-height:74px; }.console-body { padding:20px; } }
 @media (max-width:600px) { .admin-console { display:block; padding-bottom:62px; }.console-sidebar { position:fixed; z-index:20; top:auto; bottom:0; left:0; width:100%; height:62px; display:block; padding:7px 16px; border-top:1px solid #29352f; border-right:0; }.console-logo,.sidebar-account { display:none; }.console-nav { display:grid; grid-template-columns:1fr 1fr; padding:0; }.console-nav a,.console-nav a.active,.console-nav a:not(.active) { justify-content:center; gap:7px; padding:10px; font-size:10px; box-shadow:none; }.console-nav a span { font-size:13px; }.console-topbar { height:68px; padding:0 15px; }.console-topbar h1 { max-width:210px; overflow:hidden; font-size:14px; text-overflow:ellipsis; white-space:nowrap; }.console-body { padding:14px; }.db-metrics { grid-template-columns:1fr 1fr; gap:8px; }.db-metrics > article { min-height:90px; }.db-metrics > article:nth-child(3) { grid-column:1/-1; }.db-call-button { grid-column:1/-1; }.db-panel-header { align-items:flex-start; }.table-meta span { display:none; }.db-panel-footer { display:none; } }
+
+/* 全画面共通: 作業画面をフラットにし、影や浮き上がる動きをなくす */
+*, *::before, *::after {
+  box-shadow: none !important;
+}
+
+button:hover:not(:disabled),
+a:hover,
+.call-next:hover:not(:disabled),
+.btn-primary:hover {
+  transform: none !important;
+}
