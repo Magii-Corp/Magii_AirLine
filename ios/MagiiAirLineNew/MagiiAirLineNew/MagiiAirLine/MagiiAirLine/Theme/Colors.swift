@@ -1,24 +1,28 @@
 import SwiftUI
+import UIKit
 
 extension Color {
     // MARK: - Theme Color
     static let theme = Color(hex: "0B63CE")
     static let themeLight = Color(hex: "0B63CE").opacity(0.1)
 
-    // MARK: - Background
-    static let appBackground = Color.white
+    // MARK: - Called/Warning Color
+    static let called = Color(hex: "FF9500")
 
-    // MARK: - Text
-    static let textPrimary = Color.black
-    static let textSecondary = Color.black.opacity(0.5)
+    // MARK: - Adaptive Colors (Light/Dark Mode対応)
+    static let appBackground = Color(UIColor.systemBackground)
+    static let cardBackground = Color(UIColor.secondarySystemBackground)
 
-    // MARK: - Border
-    static let border = Color.black.opacity(0.12)
+    static let textPrimary = Color(UIColor.label)
+    static let textSecondary = Color(UIColor.secondaryLabel)
+    static let textTertiary = Color(UIColor.tertiaryLabel)
+
+    static let border = Color(UIColor.separator)
+    static let borderLight = Color(UIColor.separator).opacity(0.5)
 
     // MARK: - Status
     static let success = Color(hex: "34C759")
     static let warning = Color(hex: "FF9500")
-    static let called = Color(hex: "FF9500")
 }
 
 extension Color {

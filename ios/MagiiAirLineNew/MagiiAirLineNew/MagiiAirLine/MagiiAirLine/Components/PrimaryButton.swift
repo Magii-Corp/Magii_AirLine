@@ -1,4 +1,23 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Haptic Feedback Helper
+struct HapticFeedback {
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .medium) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
+    }
+
+    static func notification(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(type)
+    }
+
+    static func selection() {
+        let generator = UISelectionFeedbackGenerator()
+        generator.selectionChanged()
+    }
+}
 
 // MARK: - Primary Button (テーマカラー)
 struct PrimaryButton: View {
@@ -6,41 +25,49 @@ struct PrimaryButton: View {
     let action: () -> Void
     var isEnabled: Bool = true
 
-    private let themeColor = Color(hex: "0B63CE")
-
     var body: some View {
-        Button(action: action) {
+        Button {
+            HapticFeedback.impact(.medium)
+            action()
+        } label: {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(isEnabled ? .white : .white.opacity(0.6))
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(
                     Capsule()
-                        .fill(isEnabled ? themeColor : themeColor.opacity(0.3))
+                        .fill(isEnabled ? Color.theme : Color.gray.opacity(0.3))
                 )
         }
         .disabled(!isEnabled)
+        .buttonStyle(ScaleButtonStyle())
     }
 }
 
 // MARK: - Secondary Button (線のみ)
 struct SecondaryButton: View {
     let title: String
+    var isEnabled: Bool = true
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            HapticFeedback.impact(.light)
+            action()
+        } label: {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.black)
+                .foregroundColor(isEnabled ? Color.textPrimary : Color.textPrimary.opacity(0.5))
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
+                        .strokeBorder(isEnabled ? Color.border : Color.border.opacity(0.5), lineWidth: 1)
                 )
         }
+        .disabled(!isEnabled)
+        .buttonStyle(ScaleButtonStyle())
     }
 }
 
@@ -50,11 +77,15 @@ struct GhostButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            HapticFeedback.impact(.light)
+            action()
+        } label: {
             Text(title)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.black.opacity(0.5))
+                .foregroundColor(Color.textSecondary)
         }
+        .buttonStyle(ScaleButtonStyle())
     }
 }
 
@@ -64,7 +95,10 @@ struct CalledButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            HapticFeedback.impact(.medium)
+            action()
+        } label: {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.white)
@@ -72,9 +106,20 @@ struct CalledButton: View {
                 .frame(height: 56)
                 .background(
                     Capsule()
-                        .fill(Color.orange)
+                        .fill(Color.called)
                 )
         }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+// MARK: - Scale Button Style (もわんってなる演出)
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
@@ -86,5 +131,5 @@ struct CalledButton: View {
         CalledButton(title: "到着しました", action: {})
     }
     .padding()
-    .background(Color.white)
+    .background(Color.appBackground)
 }
