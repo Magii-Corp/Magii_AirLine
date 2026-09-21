@@ -6,9 +6,9 @@ struct RegistrationView: View {
     @State private var phone: String = ""
     @State private var partySize: Int = 1
     @State private var showConfirmation: Bool = false
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
-
-    private let themeColor = Color(hex: "0B63CE")
 
     enum Field {
         case name, phone
@@ -21,7 +21,7 @@ struct RegistrationView: View {
 
     var body: some View {
         ZStack {
-            Color.white
+            Color.appBackground
                 .ignoresSafeArea()
                 .onTapGesture {
                     focusedField = nil
@@ -35,7 +35,7 @@ struct RegistrationView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                     }
                     Spacer()
                 }
@@ -49,16 +49,25 @@ struct RegistrationView: View {
                 VStack(spacing: 8) {
                     Text("情報を入力")
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(Color.textPrimary)
 
-                    Text("順番をお取りするための情報を入力してください")
+                    Text(appState.storeName.isEmpty ? "順番をお取りするための情報を入力してください" : appState.storeName)
                         .font(.system(size: 15))
-                        .foregroundColor(.black.opacity(0.5))
+                        .foregroundColor(Color.textSecondary)
                         .multilineTextAlignment(.center)
                 }
 
                 Spacer()
                     .frame(height: 40)
+
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 14))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                }
 
                 // Form
                 VStack(spacing: 16) {
@@ -66,18 +75,18 @@ struct RegistrationView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("お名前")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(themeColor)
+                            .foregroundColor(Color.theme)
                             .padding(.leading, 4)
 
                         TextField("山田 太郎", text: $name)
                             .font(.system(size: 17))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                             .focused($focusedField, equals: .name)
                             .textContentType(.name)
                             .padding(16)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .strokeBorder(focusedField == .name ? themeColor : Color.black.opacity(0.15), lineWidth: focusedField == .name ? 2 : 1)
+                                    .strokeBorder(focusedField == .name ? Color.theme : Color.border, lineWidth: focusedField == .name ? 2 : 1)
                             )
                     }
 
@@ -85,19 +94,19 @@ struct RegistrationView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("電話番号")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(themeColor)
+                            .foregroundColor(Color.theme)
                             .padding(.leading, 4)
 
                         TextField("090-1234-5678", text: $phone)
                             .font(.system(size: 17))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                             .focused($focusedField, equals: .phone)
                             .keyboardType(.phonePad)
                             .textContentType(.telephoneNumber)
                             .padding(16)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .strokeBorder(focusedField == .phone ? themeColor : Color.black.opacity(0.15), lineWidth: focusedField == .phone ? 2 : 1)
+                                    .strokeBorder(focusedField == .phone ? Color.theme : Color.border, lineWidth: focusedField == .phone ? 2 : 1)
                             )
                     }
 
@@ -105,7 +114,7 @@ struct RegistrationView: View {
                     HStack {
                         Text("人数")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
 
                         Spacer()
 
@@ -117,13 +126,13 @@ struct RegistrationView: View {
                             } label: {
                                 Image(systemName: "minus.circle")
                                     .font(.system(size: 28, weight: .light))
-                                    .foregroundColor(partySize > 1 ? themeColor : Color.black.opacity(0.2))
+                                    .foregroundColor(partySize > 1 ? Color.theme : Color.textTertiary)
                             }
                             .disabled(partySize <= 1)
 
                             Text("\(partySize)")
                                 .font(.system(size: 24, weight: .semibold, design: .rounded))
-                                .foregroundColor(.black)
+                                .foregroundColor(Color.textPrimary)
                                 .frame(minWidth: 32)
 
                             Button {
@@ -133,7 +142,7 @@ struct RegistrationView: View {
                             } label: {
                                 Image(systemName: "plus.circle")
                                     .font(.system(size: 28, weight: .light))
-                                    .foregroundColor(partySize < 10 ? themeColor : Color.black.opacity(0.2))
+                                    .foregroundColor(partySize < 10 ? Color.theme : Color.textTertiary)
                             }
                             .disabled(partySize >= 10)
                         }
@@ -141,7 +150,7 @@ struct RegistrationView: View {
                     .padding(16)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
+                            .strokeBorder(Color.border, lineWidth: 1)
                     )
                 }
                 .padding(.horizontal, 20)
@@ -149,34 +158,118 @@ struct RegistrationView: View {
                 Spacer()
 
                 // Submit button
-                PrimaryButton(title: "次へ", isEnabled: isFormValid) {
+                PrimaryButton(
+                    title: isSubmitting ? "処理中..." : "次へ",
+                    isEnabled: isFormValid && !isSubmitting
+                ) {
                     showConfirmation = true
                 }
                 .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+
+                // Demo button
+                #if DEBUG
+                Button("デモ: スキップ") {
+                    appState.userName = "テストユーザー"
+                    appState.userPhone = "090-1234-5678"
+                    appState.partySize = 2
+                    appState.waitingNumber = 42
+                    appState.groupsAhead = 3
+                    appState.estimatedMinutes = 15
+                    appState.currentScreen = .waiting
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.theme)
                 .padding(.bottom, 32)
+                #endif
             }
         }
-        .sheet(isPresented: $showConfirmation) {
+        .onAppear {
+            // 保存された情報があれば復元
+            if !appState.userName.isEmpty {
+                name = appState.userName
+            }
+            if !appState.userPhone.isEmpty {
+                phone = appState.userPhone
+            }
+        }
+        .sheet(isPresented: $showConfirmation, content: {
             ConfirmationSheet(
                 name: name,
                 phone: phone,
                 partySize: partySize,
+                isSubmitting: $isSubmitting,
+                errorMessage: $errorMessage,
                 onRegister: {
-                    appState.userName = name
-                    appState.userPhone = phone
-                    appState.partySize = partySize
-                    appState.isFirstTimeUser = false
-                    appState.currentScreen = .waiting
+                    submitRegistration(saveInfo: true)
                 },
                 onOneTime: {
-                    appState.userName = name
-                    appState.userPhone = phone
-                    appState.partySize = partySize
-                    appState.currentScreen = .waiting
+                    submitRegistration(saveInfo: false)
                 }
             )
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
+        })
+    }
+
+    private func submitRegistration(saveInfo: Bool) {
+        isSubmitting = true
+        errorMessage = nil
+
+        Task {
+            do {
+                // 1. 電話番号認証
+                let authResponse = try await APIService.shared.authenticatePhone(phoneNumber: phone)
+                let accountId = authResponse.account.id
+
+                // 2. アカウントIDを保存
+                appState.saveAccountId(accountId)
+
+                // 3. ユーザー情報を保存（オプション）
+                if saveInfo {
+                    appState.saveUserInfo(name: name, phone: phone)
+                }
+
+                // 4. チケット作成
+                let ticketResponse = try await APIService.shared.createTicket(
+                    storeID: appState.storeId,
+                    accountID: accountId,
+                    name: name,
+                    phoneNumber: phone,
+                    partySize: partySize
+                )
+
+                // 5. 状態を更新
+                await MainActor.run {
+                    appState.userName = name
+                    appState.userPhone = phone
+                    appState.partySize = partySize
+                    appState.ticketId = ticketResponse.ticket.id
+                    appState.waitingNumber = ticketResponse.ticket.waitingNumber
+                    appState.groupsAhead = ticketResponse.groupsAhead
+                    appState.estimatedMinutes = ticketResponse.estimatedMinutes
+
+                    // ウィジェットを更新
+                    WidgetDataManager.shared.setWaiting(
+                        waitingNumber: ticketResponse.ticket.waitingNumber,
+                        groupsAhead: ticketResponse.groupsAhead
+                    )
+
+                    showConfirmation = false
+                    isSubmitting = false
+                    appState.currentScreen = .waiting
+                }
+            } catch let error as APIError {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "エラーが発生しました"
+                    isSubmitting = false
+                }
+            }
         }
     }
 }
@@ -186,16 +279,16 @@ struct ConfirmationSheet: View {
     let name: String
     let phone: String
     let partySize: Int
+    @Binding var isSubmitting: Bool
+    @Binding var errorMessage: String?
     let onRegister: () -> Void
     let onOneTime: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    private let themeColor = Color(hex: "0B63CE")
-
     var body: some View {
         ZStack {
-            Color.white
+            Color.appBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
@@ -204,18 +297,26 @@ struct ConfirmationSheet: View {
 
                 Text("この内容で発券しますか？")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(Color.textPrimary)
+
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 14))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 20)
+                }
 
                 // Info summary
                 VStack(spacing: 0) {
                     HStack {
                         Text("お名前")
                             .font(.system(size: 14))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
                         Spacer()
                         Text(name)
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                     }
                     .padding(.vertical, 16)
 
@@ -224,11 +325,11 @@ struct ConfirmationSheet: View {
                     HStack {
                         Text("電話番号")
                             .font(.system(size: 14))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
                         Spacer()
                         Text(phone)
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                     }
                     .padding(.vertical, 16)
 
@@ -237,36 +338,37 @@ struct ConfirmationSheet: View {
                     HStack {
                         Text("人数")
                             .font(.system(size: 14))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
                         Spacer()
                         Text("\(partySize)名")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                     }
                     .padding(.vertical, 16)
                 }
                 .padding(.horizontal, 20)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(themeColor.opacity(0.05))
+                        .fill(Color.cardBackground)
                 )
                 .padding(.horizontal, 20)
 
                 Text("登録すると、次回から入力が不要になります")
                     .font(.system(size: 13))
-                    .foregroundColor(.black.opacity(0.5))
+                    .foregroundColor(Color.textSecondary)
                     .multilineTextAlignment(.center)
 
                 Spacer()
 
                 VStack(spacing: 12) {
-                    PrimaryButton(title: "発券する") {
-                        dismiss()
+                    PrimaryButton(
+                        title: isSubmitting ? "処理中..." : "発券する",
+                        isEnabled: !isSubmitting
+                    ) {
                         onRegister()
                     }
 
-                    SecondaryButton(title: "今回だけ使う") {
-                        dismiss()
+                    SecondaryButton(title: "今回だけ使う", isEnabled: !isSubmitting) {
                         onOneTime()
                     }
                 }

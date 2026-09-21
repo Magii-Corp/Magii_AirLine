@@ -3,12 +3,12 @@ import UIKit
 
 struct CalledView: View {
     @EnvironmentObject var appState: AppState
-    @State private var waitingNumber: Int = 42
     @State private var remainingSeconds: Int = 900 // 15分
     @State private var timer: Timer?
     @State private var isPulsing = false
+    @State private var isArriving = false
+    @State private var errorMessage: String?
 
-    private let calledColor = Color(hex: "FF9500")
     private let totalSeconds: Double = 900.0
 
     private var remainingTimeText: String {
@@ -24,7 +24,7 @@ struct CalledView: View {
     var body: some View {
         ZStack {
             // 背景
-            Color.white
+            Color.appBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -35,7 +35,7 @@ struct CalledView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "bell.fill")
                         .font(.system(size: 24))
-                        .foregroundColor(calledColor)
+                        .foregroundColor(Color.called)
                         .rotationEffect(.degrees(isPulsing ? -15 : 15))
                         .animation(
                             Animation.easeInOut(duration: 0.15)
@@ -45,7 +45,7 @@ struct CalledView: View {
 
                     Text("お呼び出し中")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(calledColor)
+                        .foregroundColor(Color.called)
                 }
                 .frame(maxWidth: .infinity)
                 .onAppear { isPulsing = true }
@@ -58,26 +58,45 @@ struct CalledView: View {
                     VStack(spacing: 12) {
                         Text("受付番号")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
 
-                        Text("\(waitingNumber)")
+                        Text("\(appState.waitingNumber)")
                             .font(.system(size: 140, weight: .bold, design: .rounded))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
                     }
 
                     // メッセージ
                     VStack(spacing: 8) {
                         Text("席のご用意ができました")
                             .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
 
                         Text("カウンターまでお越しください")
                             .font(.system(size: 15))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
                     }
                 }
 
                 Spacer()
+
+                // エラーメッセージ
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 14))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+                }
+
+                // 到着ボタン
+                PrimaryButton(
+                    title: isArriving ? "処理中..." : "到着しました",
+                    isEnabled: !isArriving
+                ) {
+                    reportArrival()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
 
                 // タイマーセクション
                 VStack(spacing: 20) {
@@ -86,22 +105,22 @@ struct CalledView: View {
                         HStack {
                             Text("自動キャンセルまで")
                                 .font(.system(size: 13))
-                                .foregroundColor(.black.opacity(0.5))
+                                .foregroundColor(Color.textSecondary)
                             Spacer()
                             Text(remainingTimeText)
                                 .font(.system(size: 24, weight: .bold, design: .monospaced))
-                                .foregroundColor(calledColor)
+                                .foregroundColor(Color.called)
                         }
 
                         // プログレスバー
                         GeometryReader { geometry in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.black.opacity(0.08))
+                                    .fill(Color.border)
                                     .frame(height: 12)
 
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(calledColor)
+                                    .fill(Color.called)
                                     .frame(width: geometry.size.width * progress, height: 12)
                                     .animation(.linear(duration: 1), value: remainingSeconds)
                             }
@@ -110,22 +129,40 @@ struct CalledView: View {
 
                         Text("時間内にお越しにならない場合、自動でキャンセルされます")
                             .font(.system(size: 12))
-                            .foregroundColor(.black.opacity(0.4))
+                            .foregroundColor(Color.textTertiary)
                             .multilineTextAlignment(.center)
                     }
                     .padding(24)
                     .background(
                         RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.black.opacity(0.03))
+                            .fill(Color.cardBackground)
                     )
+
+                    // Demo button
+                    #if DEBUG
+                    Button("デモ: 完了画面へ") {
+                        timer?.invalidate()
+                        appState.currentScreen = .completion
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.called)
+                    #endif
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 50)
             }
         }
         .onAppear {
+            // ハプティックフィードバック
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
+
+            // 通知を送信（バックグラウンド用）
+            NotificationManager.shared.sendCalledNotification(waitingNumber: appState.waitingNumber)
+
+            // ウィジェットを更新
+            WidgetDataManager.shared.setCalled(waitingNumber: appState.waitingNumber)
+
             startCountdown()
         }
         .onDisappear {
@@ -139,7 +176,48 @@ struct CalledView: View {
                 remainingSeconds -= 1
             } else {
                 t.invalidate()
-                appState.currentScreen = .qrScanner
+                // 自動完了（サーバー側でもdoneになっているはず）
+                appState.currentScreen = .completion
+            }
+        }
+    }
+
+    private func reportArrival() {
+        guard !appState.ticketId.isEmpty, !appState.accountId.isEmpty else {
+            appState.currentScreen = .completion
+            return
+        }
+
+        isArriving = true
+        errorMessage = nil
+
+        Task {
+            do {
+                _ = try await APIService.shared.arriveTicket(
+                    ticketID: appState.ticketId,
+                    accountID: appState.accountId
+                )
+
+                await MainActor.run {
+                    timer?.invalidate()
+                    WidgetDataManager.shared.clear()
+                    appState.currentScreen = .completion
+                }
+            } catch let error as APIError {
+                await MainActor.run {
+                    // NOT_CALLEDエラーの場合は待機画面に戻す
+                    if case .serverError(let code, _) = error, code == "NOT_CALLED" {
+                        appState.currentScreen = .waiting
+                    } else {
+                        errorMessage = error.localizedDescription
+                    }
+                    isArriving = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "エラーが発生しました"
+                    isArriving = false
+                }
             }
         }
     }
@@ -150,6 +228,7 @@ struct CalledView: View {
         .environmentObject({
             let state = AppState()
             state.userName = "山田 太郎"
+            state.waitingNumber = 42
             return state
         }())
 }

@@ -11,7 +11,7 @@ struct CompletionView: View {
 
     var body: some View {
         ZStack {
-            Color.white
+            Color.appBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -22,12 +22,12 @@ struct CompletionView: View {
                     // Checkmark circle
                     ZStack {
                         Circle()
-                            .strokeBorder(Color.black, lineWidth: 2)
+                            .strokeBorder(Color.success, lineWidth: 3)
                             .frame(width: 120, height: 120)
 
                         Image(systemName: "checkmark")
                             .font(.system(size: 56, weight: .medium))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.success)
                             .scaleEffect(checkmarkScale)
                     }
 
@@ -35,11 +35,11 @@ struct CompletionView: View {
                     VStack(spacing: 12) {
                         Text("ご来店ありがとうございます")
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color.textPrimary)
 
                         Text("またのご利用をお待ちしております")
                             .font(.system(size: 15))
-                            .foregroundColor(.black.opacity(0.5))
+                            .foregroundColor(Color.textSecondary)
                     }
                 }
 
@@ -49,17 +49,17 @@ struct CompletionView: View {
                 VStack(spacing: 12) {
                     Text("\(countdown)秒後に最初の画面に戻ります")
                         .font(.system(size: 13))
-                        .foregroundColor(.black.opacity(0.5))
+                        .foregroundColor(Color.textSecondary)
 
                     // Progress bar
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.black.opacity(0.1))
+                                .fill(Color.border)
                                 .frame(height: 4)
 
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.black)
+                                .fill(Color.success)
                                 .frame(width: geometry.size.width * CGFloat(5 - countdown) / 5, height: 4)
                                 .animation(.linear(duration: 1), value: countdown)
                         }
@@ -97,10 +97,15 @@ struct CompletionView: View {
     }
 
     private func resetAndReturn() {
-        // Reset state for next customer
-        appState.waitingNumber = 0
-        appState.groupsAhead = 0
+        // Reset state for next guest
+        appState.resetTicketState()
         appState.currentScreen = .qrScanner
+
+        // SSE接続を切断
+        SSEService.shared.disconnect()
+
+        // ウィジェットをクリア
+        WidgetDataManager.shared.clear()
     }
 }
 
