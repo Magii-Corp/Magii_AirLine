@@ -38,16 +38,27 @@ export const ADMIN_API_PATHS = {
 } as const;
 
 
-/** 管理バックエンドのベースURL。例: https://api.example.com */
-const baseURL = process.env.NEXT_PUBLIC_ADMIN_API_BASE_URL?.replace(/\/$/, "");
+/** Next.jsの中継パス、または管理バックエンドのURL。 */
+const baseURL = process.env.NEXT_PUBLIC_ADMIN_API_BASE_URL?.trim().replace(/\/+$/, "");
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   if (!baseURL) throw new Error("管理APIの接続先が設定されていません");
-  const response = await fetch(baseURL + path, {
+  let response: Response;
+  try {
+    response = await fetch(baseURL + path, {
     method, cache: "no-store",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
-  });
-  const result = await response.json();
+    });
+  } catch {
+    throw new Error("管理APIに接続できません。サーバーの起動状態と接続先を確認してください");
+  }
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`管理APIから正しい応答を受け取れませんでした（HTTP ${response.status}）。接続先とサーバーの起動状態を確認してください`);
+  }
+  if (!result || typeof result !== "object") throw new Error("管理APIの応答形式が不正です");
   if (!response.ok || result.success === false) throw new Error(result.message || "通信に失敗しました");
   return result as T;
 }
