@@ -6,8 +6,6 @@ supabase/.branches/
 admin/adminapi設計.txt
 admin/ダッシュボード画面.png
 admin/node_modules*
+server/node_modules*
 admin/.next*
 admin/tsconfig.tsbuildinfo
-
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
