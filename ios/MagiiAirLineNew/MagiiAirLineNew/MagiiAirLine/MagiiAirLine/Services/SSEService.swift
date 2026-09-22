@@ -17,7 +17,12 @@ enum SSEEvent {
 class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
     static let shared = SSEService()
 
-    private let baseURL = "http://localhost:3000/customer"
+    // 実機テスト時はMacのローカルIPを使用
+    #if DEBUG
+    private let baseURL = "http://192.168.10.102:8787/customer"
+    #else
+    private let baseURL = "http://localhost:8787/customer"
+    #endif
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var buffer = ""
@@ -33,7 +38,11 @@ class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
     func connect(ticketID: String) {
         disconnect()
 
-        guard let url = URL(string: "\(baseURL)/tickets/events?ticketID=\(ticketID)") else {
+        let urlString = "\(baseURL)/tickets/events?ticketID=\(ticketID)"
+        print("[SSE] Connecting to: \(urlString)")
+
+        guard let url = URL(string: urlString) else {
+            print("[SSE] Invalid URL")
             onEvent?(.error(APIError.invalidURL))
             return
         }
@@ -51,12 +60,13 @@ class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
         task = session?.dataTask(with: request)
         task?.resume()
 
-        // 接続開始（実際の接続確認はデータ受信時に行う）
+        print("[SSE] Connection started")
     }
 
     // MARK: - URLSessionDataDelegate
 
     nonisolated func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        print("[SSE] Connected! Response: \(response)")
         Task { @MainActor in
             self.isConnected = true
             self.onEvent?(.connected)
@@ -83,11 +93,13 @@ class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
     }
 
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        print("[SSE] Connection completed with error: \(String(describing: error))")
         Task { @MainActor in
             self.isConnected = false
             if let error = error {
                 // キャンセルエラーは無視
                 if (error as NSError).code != NSURLErrorCancelled {
+                    print("[SSE] Error: \(error.localizedDescription)")
                     self.onEvent?(.error(error))
                 }
             }
@@ -128,6 +140,8 @@ class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
         guard !eventData.isEmpty else { return }
         guard let data = eventData.data(using: .utf8) else { return }
 
+        print("[SSE] Received event: \(eventType), data: \(eventData)")
+
         let decoder = JSONDecoder()
 
         switch eventType {
@@ -147,7 +161,10 @@ class SSEService: NSObject, ObservableObject, URLSessionDataDelegate {
 
         case "ticket.done":
             if let event = try? decoder.decode(TicketUpdatedEvent.self, from: data) {
+                print("[SSE] ticket.done decoded successfully")
                 onEvent?(.ticketDone(event.ticket))
+            } else {
+                print("[SSE] Failed to decode ticket.done event")
             }
 
         case "ticket.cancelled":

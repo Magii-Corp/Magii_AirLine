@@ -21,6 +21,7 @@ import {
   myTicketQuerySchema,
   phoneAuthSchema,
   registerDeviceSchema,
+  updateTicketSchema,
   uuid,
 } from "../../schemas/index.js";
 import { toAccount, toCustomerStore, toCustomerTicket } from "../../serialize/index.js";
@@ -273,6 +274,44 @@ customerRoutes.post("/tickets/:ticketID/cancel", async (c) => {
   return c.json({
     success: true as const,
     ticket: toCustomerTicket(result.ticket, result.account, result.store),
+    serverTime: serverTime(),
+  });
+});
+
+// ------------------------------------------------------------ 情報更新
+
+customerRoutes.patch("/tickets/:ticketID", async (c) => {
+  const ticketID = uuid.parse(c.req.param("ticketID"));
+  const body = updateTicketSchema.parse(await c.req.json());
+
+  const result = await withTransaction(async (tx) => {
+    const current = await ticketsRepo.getOwnedTicket(tx, ticketID, body.accountID);
+    if (!current) throw new AppError("TICKET_NOT_FOUND");
+
+    // waiting または called のみ更新可能
+    if (current.status !== "waiting" && current.status !== "called") {
+      throw new AppError("CANNOT_CANCEL"); // 終了済みは更新不可
+    }
+
+    await ticketsRepo.updateInfo(tx, ticketID, body.name, body.partySize);
+    return ticketsRepo.hydrateInTx(tx, ticketID);
+  });
+
+  if (!result) throw new AppError("TICKET_NOT_FOUND");
+
+  const ahead = await ticketsRepo.countWaitingAhead(
+    result.store.id,
+    result.ticket.business_date,
+    result.ticket.waiting_number,
+    result.ticket.id
+  );
+  const groupsAhead = groupsAheadFor(result.ticket.status as TicketStatus, ahead);
+
+  return c.json({
+    success: true as const,
+    ticket: toCustomerTicket(result.ticket, result.account, result.store),
+    groupsAhead,
+    estimatedMinutes: estimatedMinutes(groupsAhead, result.store.avg_minutes_per_party),
     serverTime: serverTime(),
   });
 });

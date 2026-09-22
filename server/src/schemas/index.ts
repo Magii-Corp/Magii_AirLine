@@ -97,6 +97,12 @@ export const myTicketQuerySchema = z.object({
 
 export const cancelTicketSchema = z.object({ accountID: uuid });
 
+export const updateTicketSchema = z.object({
+  accountID: uuid,
+  name: personName,
+  partySize,
+});
+
 export const registerDeviceSchema = z.object({
   accountID: uuid,
   deviceToken: z.string().min(1).max(512),

@@ -162,7 +162,12 @@ struct RegistrationView: View {
                     title: isSubmitting ? "処理中..." : "次へ",
                     isEnabled: isFormValid && !isSubmitting
                 ) {
-                    showConfirmation = true
+                    // 既に情報が保存されている場合は確認をスキップ
+                    if !appState.userName.isEmpty && !appState.userPhone.isEmpty {
+                        submitRegistration(saveInfo: true)
+                    } else {
+                        showConfirmation = true
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)

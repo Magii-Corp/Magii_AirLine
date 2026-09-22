@@ -179,6 +179,26 @@ export async function updateStatus(
   return res.rows[0]!;
 }
 
+/**
+ * 名前と人数を更新する。待機中・呼び出し中のみ許可。
+ */
+export async function updateInfo(
+  tx: Tx,
+  ticketId: string,
+  name: string,
+  partySize: number
+): Promise<TicketRow> {
+  const res = await tx.query<TicketRow>(
+    `update public.tickets
+        set name = $2,
+            party_size = $3
+      where id = $1
+     returning ${COLUMNS}`,
+    [ticketId, name, partySize]
+  );
+  return res.rows[0]!;
+}
+
 export interface CreateTicketInput {
   storeId: string;
   accountId: string;

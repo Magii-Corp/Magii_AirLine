@@ -25,8 +25,8 @@ async function main(): Promise<void> {
   startScheduler([autoSwitchJob, autoCompleteJob, businessDateJob]);
   console.info(`[boot] ジョブを開始しました (間隔 ${env.JOB_TICK_MS}ms)`);
 
-  const server = serve({ fetch: createApp().fetch, port: env.PORT }, (info) => {
-    console.info(`[boot] http://127.0.0.1:${info.port} で待受中`);
+  const server = serve({ fetch: createApp().fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
+    console.info(`[boot] http://0.0.0.0:${info.port} で待受中`);
   });
 
   const shutdown = async (signal: string) => {

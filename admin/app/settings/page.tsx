@@ -103,7 +103,7 @@ export default function SettingsPage() {
   return (
     <main className="admin-console">
       <aside className="console-sidebar settings-sidebar">
-        <div className="console-logo"><div className="brand-mark small">M</div><div><b>Magii AirLine</b><span>管理画面</span></div></div>
+        <div className="console-logo"><img src="/logo.png" alt="Magii AirLine" className="brand-logo" /><div><b>Magii AirLine</b><span>管理画面</span></div></div>
         <nav className="console-nav" aria-label="管理メニュー">
           <Link href="/dashboard">ダッシュボード</Link>
           <Link href="/tickets">受付一覧</Link>

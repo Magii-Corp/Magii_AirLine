@@ -41,7 +41,7 @@ export default function LoginPage() {
   return (
     <main className="auth-shell">
       <section className="auth-panel">
-        <div className="brand-mark" aria-hidden="true">M</div>
+        <img src="/icon-192.png" alt="Magii AirLine" className="brand-logo-large" />
         <p className="eyebrow">MAGII AIRLINE</p>
         <h1 className="auth-title">おかえりなさい</h1>
         <p className="auth-copy">店舗の待ち列を、ここからスマートに管理。</p>

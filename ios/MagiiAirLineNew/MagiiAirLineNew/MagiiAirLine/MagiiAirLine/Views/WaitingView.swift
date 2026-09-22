@@ -8,6 +8,7 @@ struct WaitingView: View {
     @State private var showEditSheet = false
     @State private var isCancelling = false
     @State private var errorMessage: String?
+    @State private var lastNotifiedGroupsAhead: Int = -1
 
     private var isAlmostReady: Bool {
         appState.groupsAhead <= 1
@@ -213,16 +214,33 @@ struct WaitingView: View {
                 waitingNumber: appState.waitingNumber,
                 groupsAhead: appState.groupsAhead
             )
+            // 初期値を設定（重複通知防止）
+            lastNotifiedGroupsAhead = appState.groupsAhead
         }
         .onDisappear {
-            sseService.disconnect()
+            // CalledViewでもSSE接続を使うので、ここではdisconnectしない
+            // 完了・キャンセル時にCalledViewまたはCompletionViewでdisconnectする
         }
-        .onChange(of: appState.groupsAhead) { _, newValue in
+        .onChange(of: appState.groupsAhead) { oldValue, newValue in
             // グループ数が変わったらウィジェットを更新
             WidgetDataManager.shared.setWaiting(
                 waitingNumber: appState.waitingNumber,
                 groupsAhead: newValue
             )
+
+            // 残り組数の通知（減った時のみ、重複防止）
+            if newValue < oldValue {
+                // 残り3組になった時
+                if newValue == 3 && lastNotifiedGroupsAhead > 3 {
+                    NotificationManager.shared.sendAlmostReadyNotification(waitingNumber: appState.waitingNumber)
+                    lastNotifiedGroupsAhead = 3
+                }
+                // 残り1組になった時
+                if newValue == 1 && lastNotifiedGroupsAhead > 1 {
+                    NotificationManager.shared.sendNextUpNotification(waitingNumber: appState.waitingNumber)
+                    lastNotifiedGroupsAhead = 1
+                }
+            }
         }
     }
 
@@ -259,10 +277,12 @@ struct WaitingView: View {
 
         case .ticketDone:
             // 完了
+            sseService.disconnect()
             appState.currentScreen = .completion
 
         case .ticketCancelled:
             // キャンセルされた
+            sseService.disconnect()
             appState.resetTicketState()
             appState.currentScreen = .qrScanner
 
@@ -342,6 +362,8 @@ struct EditInfoSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
     @State private var phone: String = ""
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
     enum Field {
@@ -358,36 +380,45 @@ struct EditInfoSheet: View {
 
             VStack(spacing: 24) {
                 // Header
-                HStack {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    } label: {
-                        Text("キャンセル")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.textSecondary)
-                    }
-
-                    Spacer()
-
+                ZStack {
                     Text("情報を編集")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Color.textPrimary)
 
-                    Spacer()
+                    HStack {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismiss()
+                        } label: {
+                            Text("キャンセル")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.textSecondary)
+                        }
+                        .disabled(isSaving)
 
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        appState.saveUserInfo(name: name, phone: phone)
-                        dismiss()
-                    } label: {
-                        Text("保存")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.theme)
+                        Spacer()
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            saveInfo()
+                        } label: {
+                            Text(isSaving ? "保存中..." : "保存")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(isSaving ? Color.textSecondary : Color.theme)
+                        }
+                        .disabled(isSaving)
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
+
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 14))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 20)
+                }
 
                 // Form
                 VStack(spacing: 16) {
@@ -438,6 +469,40 @@ struct EditInfoSheet: View {
         .onAppear {
             name = appState.userName
             phone = appState.userPhone
+        }
+    }
+
+    private func saveInfo() {
+        isSaving = true
+        errorMessage = nil
+
+        Task {
+            do {
+                _ = try await APIService.shared.updateTicket(
+                    ticketID: appState.ticketId,
+                    accountID: appState.accountId,
+                    name: name,
+                    partySize: appState.partySize
+                )
+
+                await MainActor.run {
+                    // ローカルの状態も更新
+                    appState.userName = name
+                    appState.userPhone = phone
+                    appState.saveUserInfo(name: name, phone: phone)
+                    dismiss()
+                }
+            } catch let error as APIError {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSaving = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "保存に失敗しました"
+                    isSaving = false
+                }
+            }
         }
     }
 }
