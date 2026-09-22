@@ -165,23 +165,7 @@ struct RegistrationView: View {
                     showConfirmation = true
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 16)
-
-                // Demo button
-                #if DEBUG
-                Button("デモ: スキップ") {
-                    appState.userName = "テストユーザー"
-                    appState.userPhone = "090-1234-5678"
-                    appState.partySize = 2
-                    appState.waitingNumber = 42
-                    appState.groupsAhead = 3
-                    appState.estimatedMinutes = 15
-                    appState.currentScreen = .waiting
-                }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color.theme)
                 .padding(.bottom, 32)
-                #endif
             }
         }
         .onAppear {
