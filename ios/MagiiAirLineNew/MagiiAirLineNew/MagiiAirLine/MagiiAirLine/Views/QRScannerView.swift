@@ -109,18 +109,6 @@ struct QRScannerView: View {
                 }
 
                 Spacer()
-
-                // Demo button (DEBUGモードのみ)
-                #if DEBUG
-                PrimaryButton(
-                    title: isLoading ? "読み込み中..." : "デモ: スキャン完了",
-                    isEnabled: !isLoading
-                ) {
-                    handleQRScanned(storeId: "demo_store_001")
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 32)
-                #endif
             }
         }
         .onAppear {

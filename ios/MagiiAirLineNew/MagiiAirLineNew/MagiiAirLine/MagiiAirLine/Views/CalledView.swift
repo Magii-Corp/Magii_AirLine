@@ -3,6 +3,7 @@ import UIKit
 
 struct CalledView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var sseService = SSEService.shared
     @State private var remainingSeconds: Int = 900 // 15分
     @State private var timer: Timer?
     @State private var isPulsing = false
@@ -138,15 +139,6 @@ struct CalledView: View {
                             .fill(Color.cardBackground)
                     )
 
-                    // Demo button
-                    #if DEBUG
-                    Button("デモ: 完了画面へ") {
-                        timer?.invalidate()
-                        appState.currentScreen = .completion
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.called)
-                    #endif
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 50)
@@ -162,6 +154,9 @@ struct CalledView: View {
 
             // ウィジェットを更新
             WidgetDataManager.shared.setCalled(waitingNumber: appState.waitingNumber)
+
+            // SSEイベントを監視（管理者が到着処理したら完了画面へ）
+            startSSE()
 
             startCountdown()
         }
@@ -179,6 +174,39 @@ struct CalledView: View {
                 // 自動完了（サーバー側でもdoneになっているはず）
                 appState.currentScreen = .completion
             }
+        }
+    }
+
+    private func startSSE() {
+        guard !appState.ticketId.isEmpty else { return }
+
+        sseService.onEvent = { event in
+            handleSSEEvent(event)
+        }
+
+        // WaitingViewから接続済みの場合は再接続不要
+        if !sseService.isConnected {
+            sseService.connect(ticketID: appState.ticketId)
+        }
+    }
+
+    private func handleSSEEvent(_ event: SSEEvent) {
+        switch event {
+        case .ticketDone:
+            // 管理者が到着処理した
+            timer?.invalidate()
+            WidgetDataManager.shared.clear()
+            appState.currentScreen = .completion
+
+        case .ticketCancelled:
+            // キャンセルされた
+            timer?.invalidate()
+            WidgetDataManager.shared.clear()
+            appState.resetTicketState()
+            appState.currentScreen = .qrScanner
+
+        default:
+            break
         }
     }
 

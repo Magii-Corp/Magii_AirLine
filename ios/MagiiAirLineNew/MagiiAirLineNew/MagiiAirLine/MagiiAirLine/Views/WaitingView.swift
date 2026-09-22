@@ -190,28 +190,6 @@ struct WaitingView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
 
-                // Demo buttons
-                #if DEBUG
-                HStack(spacing: 16) {
-                    Button("前の組が進む") {
-                        withAnimation {
-                            if appState.groupsAhead > 0 {
-                                appState.groupsAhead -= 1
-                                appState.estimatedMinutes = max(0, appState.estimatedMinutes - 5)
-                            }
-                        }
-                    }
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.textTertiary)
-
-                    Button("呼び出しデモ") {
-                        appState.currentScreen = .called
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.theme)
-                }
-                .padding(.bottom, 32)
-                #endif
             }
         }
         .alert("順番をキャンセルしますか？", isPresented: $showCancelConfirmation) {

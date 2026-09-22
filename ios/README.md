@@ -11,12 +11,15 @@ open MagiiAirLineNew/MagiiAirLineNew.xcodeproj
 
 ### 環境設定
 
-`MagiiAirLineNew/MagiiAirLineNew/MagiiAirLine/MagiiAirLine/Services/APIService.swift` でAPIのベースURLを設定：
+以下のファイルでAPIのベースURLを設定：
 
+**`Services/APIService.swift`** と **`Services/SSEService.swift`**：
 ```swift
 private let baseURL = "http://localhost:8787/customer"  // 開発環境
 // private let baseURL = "https://api.example.com/customer"  // 本番環境
 ```
+
+両方のファイルで同じURLに設定すること。
 
 ## ファイル構成
 
@@ -78,11 +81,6 @@ QRスキャン → 情報入力 → 待機 → 呼び出し → 完了
 | `/customer/tickets` | POST | 受付登録 |
 | `/customer/tickets/{id}` | DELETE | キャンセル |
 | `/customer/tickets/events` | GET (SSE) | リアルタイム更新 |
-
-## 開発用機能
-
-`#if DEBUG` でデモボタンが表示される：
-- 待機画面: 「前の組が進む」「呼び出しデモ」
 
 ## 要件
 
