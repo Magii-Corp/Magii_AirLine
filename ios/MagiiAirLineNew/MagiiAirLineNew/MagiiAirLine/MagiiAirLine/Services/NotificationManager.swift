@@ -35,6 +35,51 @@ final class NotificationManager: NSObject, ObservableObject, @unchecked Sendable
         }
     }
 
+    // MARK: - 残り3組通知
+    func sendAlmostReadyNotification(waitingNumber: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "もうすぐです"
+        content.body = "受付番号 \(waitingNumber) 番のお客様、あと3組でお呼びします。店舗の近くでお待ちください。"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "almost_ready_\(waitingNumber)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to send notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - 残り1組通知
+    func sendNextUpNotification(waitingNumber: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "次はあなたです"
+        content.body = "受付番号 \(waitingNumber) 番のお客様、次にお呼びします。カウンター付近でお待ちください。"
+        content.sound = .default
+        content.badge = 1
+
+        let request = UNNotificationRequest(
+            identifier: "next_up_\(waitingNumber)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to send notification: \(error.localizedDescription)")
+            }
+        }
+
+        // 軽いバイブレーション
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+    }
+
     // MARK: - 呼び出し通知を送信
     func sendCalledNotification(waitingNumber: Int) {
         let content = UNMutableNotificationContent()
@@ -58,6 +103,56 @@ final class NotificationManager: NSObject, ObservableObject, @unchecked Sendable
 
         // バイブレーション
         triggerVibration()
+    }
+
+    // MARK: - 自動キャンセルタイマー通知をスケジュール
+    func scheduleAutoCancelReminders(waitingNumber: Int, calledAt: Date) {
+        // 既存のリマインダーをキャンセル
+        cancelAutoCancelReminders()
+
+        let reminders: [(minutes: Int, title: String, body: String)] = [
+            (10, "残り10分", "受付番号 \(waitingNumber) 番のお客様、あと10分で自動キャンセルになります。お早めにお越しください。"),
+            (5, "残り5分", "受付番号 \(waitingNumber) 番のお客様、あと5分で自動キャンセルになります。"),
+            (1, "残り1分", "受付番号 \(waitingNumber) 番のお客様、あと1分で自動キャンセルになります！すぐにお越しください。")
+        ]
+
+        let autoCompleteMinutes = 15.0  // 15分で自動完了
+
+        for reminder in reminders {
+            let content = UNMutableNotificationContent()
+            content.title = reminder.title
+            content.body = reminder.body
+            content.sound = .default
+
+            // 通知を送るタイミング（呼び出しから何秒後か）
+            let triggerSeconds = (autoCompleteMinutes - Double(reminder.minutes)) * 60
+            let triggerDate = calledAt.addingTimeInterval(triggerSeconds)
+
+            // 過去の時間ならスキップ
+            guard triggerDate > Date() else { continue }
+
+            let timeInterval = triggerDate.timeIntervalSinceNow
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)
+
+            let request = UNNotificationRequest(
+                identifier: "auto_cancel_\(reminder.minutes)min",
+                content: content,
+                trigger: trigger
+            )
+
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("Failed to schedule reminder: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    // MARK: - 自動キャンセルリマインダーをキャンセル
+    func cancelAutoCancelReminders() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: ["auto_cancel_10min", "auto_cancel_5min", "auto_cancel_1min"]
+        )
     }
 
     // MARK: - バイブレーション
