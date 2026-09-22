@@ -27,7 +27,12 @@ actor APIService {
     static let shared = APIService()
 
     // TODO: 本番環境では適切なURLに変更
-    private let baseURL = "http://localhost:3000/customer"
+    // 実機テスト時はMacのローカルIPを使用
+    #if DEBUG
+    private let baseURL = "http://192.168.10.102:8787/customer"
+    #else
+    private let baseURL = "http://localhost:8787/customer"
+    #endif
 
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
@@ -84,8 +89,13 @@ actor APIService {
         return try await post("/tickets/\(ticketID)/cancel", body: ["accountID": accountID])
     }
 
-    func arriveTicket(ticketID: String, accountID: String) async throws -> ArriveTicketResponse {
-        return try await post("/tickets/\(ticketID)/arrive", body: ["accountID": accountID])
+    func updateTicket(ticketID: String, accountID: String, name: String, partySize: Int) async throws -> TicketDetailResponse {
+        let body: [String: Any] = [
+            "accountID": accountID,
+            "name": name,
+            "partySize": partySize
+        ]
+        return try await patch("/tickets/\(ticketID)", body: body)
     }
 
     // MARK: - Devices
@@ -124,6 +134,19 @@ actor APIService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        return try await perform(request)
+    }
+
+    private func patch<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        guard let url = URL(string: baseURL + path) else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

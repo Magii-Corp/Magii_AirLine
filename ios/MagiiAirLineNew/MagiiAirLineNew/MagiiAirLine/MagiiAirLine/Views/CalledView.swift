@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AudioToolbox
 
 struct CalledView: View {
     @EnvironmentObject var appState: AppState
@@ -7,8 +8,6 @@ struct CalledView: View {
     @State private var remainingSeconds: Int = 900 // 15分
     @State private var timer: Timer?
     @State private var isPulsing = false
-    @State private var isArriving = false
-    @State private var errorMessage: String?
 
     private let totalSeconds: Double = 900.0
 
@@ -80,25 +79,6 @@ struct CalledView: View {
 
                 Spacer()
 
-                // エラーメッセージ
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.system(size: 14))
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 16)
-                }
-
-                // 到着ボタン
-                PrimaryButton(
-                    title: isArriving ? "処理中..." : "到着しました",
-                    isEnabled: !isArriving
-                ) {
-                    reportArrival()
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
-
                 // タイマーセクション
                 VStack(spacing: 20) {
                     // プログレスバー（横型）
@@ -145,23 +125,30 @@ struct CalledView: View {
             }
         }
         .onAppear {
-            // ハプティックフィードバック
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
+            // 強いバイブレーション（3回連続）
+            triggerStrongVibration()
 
             // 通知を送信（バックグラウンド用）
             NotificationManager.shared.sendCalledNotification(waitingNumber: appState.waitingNumber)
 
+            // 自動キャンセル前の通知をスケジュール（10分前、5分前、1分前）
+            NotificationManager.shared.scheduleAutoCancelReminders(
+                waitingNumber: appState.waitingNumber,
+                calledAt: Date()
+            )
+
             // ウィジェットを更新
             WidgetDataManager.shared.setCalled(waitingNumber: appState.waitingNumber)
 
-            // SSEイベントを監視（管理者が到着処理したら完了画面へ）
+            // SSEイベントを監視（管理者が完了処理したら完了画面へ）
             startSSE()
 
             startCountdown()
         }
         .onDisappear {
             timer?.invalidate()
+            // リマインダー通知をキャンセル
+            NotificationManager.shared.cancelAutoCancelReminders()
         }
     }
 
@@ -193,15 +180,21 @@ struct CalledView: View {
     private func handleSSEEvent(_ event: SSEEvent) {
         switch event {
         case .ticketDone:
-            // 管理者が到着処理した
+            // 管理者が完了処理した
+            print("[CalledView] Received ticketDone event")
             timer?.invalidate()
+            sseService.disconnect()
             WidgetDataManager.shared.clear()
+            NotificationManager.shared.cancelAutoCancelReminders()
             appState.currentScreen = .completion
 
         case .ticketCancelled:
             // キャンセルされた
+            print("[CalledView] Received ticketCancelled event")
             timer?.invalidate()
+            sseService.disconnect()
             WidgetDataManager.shared.clear()
+            NotificationManager.shared.cancelAutoCancelReminders()
             appState.resetTicketState()
             appState.currentScreen = .qrScanner
 
@@ -210,43 +203,24 @@ struct CalledView: View {
         }
     }
 
-    private func reportArrival() {
-        guard !appState.ticketId.isEmpty, !appState.accountId.isEmpty else {
-            appState.currentScreen = .completion
-            return
+    private func triggerStrongVibration() {
+        // 強いインパクトフィードバックを3回連続
+        let generator = UIImpactFeedbackGenerator(style: .heavy)
+        generator.prepare()
+
+        generator.impactOccurred()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            generator.impactOccurred()
         }
 
-        isArriving = true
-        errorMessage = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            generator.impactOccurred()
+        }
 
-        Task {
-            do {
-                _ = try await APIService.shared.arriveTicket(
-                    ticketID: appState.ticketId,
-                    accountID: appState.accountId
-                )
-
-                await MainActor.run {
-                    timer?.invalidate()
-                    WidgetDataManager.shared.clear()
-                    appState.currentScreen = .completion
-                }
-            } catch let error as APIError {
-                await MainActor.run {
-                    // NOT_CALLEDエラーの場合は待機画面に戻す
-                    if case .serverError(let code, _) = error, code == "NOT_CALLED" {
-                        appState.currentScreen = .waiting
-                    } else {
-                        errorMessage = error.localizedDescription
-                    }
-                    isArriving = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "エラーが発生しました"
-                    isArriving = false
-                }
-            }
+        // システムバイブレーション（さらに強い）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
         }
     }
 }
